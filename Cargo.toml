@@ -1,0 +1,9 @@
+[package]
+name = "fuss-rs"
+version = "0.1.0"
+authors = ["James Wilson <me@unbui.lt>"]
+
+[dependencies]
+chomp = "0.3.1"
+# nom = "2.2.1"
+# assert_approx_eq = "1.0.0"
