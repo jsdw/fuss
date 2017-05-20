@@ -5,14 +5,13 @@ use std::collections::HashMap;
 pub enum Primitive {
     Str(String),
     Bool(bool),
-    Number(f64),
     Unit(f64, String)
 }
 
 /// The possible things that can crop up in a CSS block
 #[derive(PartialEq,Debug)]
 pub enum CSSEntry {
-    Expr(ExprBox),
+    Expr(Expr),
     KeyVal{ key: String, val: String }
 }
 pub type CSSEntryBox = Box<CSSEntry>;

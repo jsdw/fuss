@@ -1,4 +1,4 @@
-use types::{Expr, CSSEntry};
+use types::{Expr, CSSEntry, Primitive};
 use chomp::prelude::*;
 use chomp::parsers;
 
@@ -15,6 +15,13 @@ impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
 
 type MyResult<'a,T> = ParseResult<&'a str,T,MyError<parsers::Error<char>>>;
 
+fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,()> {
+    let chars = toks.chars().collect::<Vec<char>>();
+    string(i, &chars)
+        .map(|_| ())
+        .map_err(MyError::Err)
+}
+
 fn skip_horizontal_spaces(i: &str) -> MyResult<()> {
     skip_while(i, |c| c == '\t' || c == ' ').map_err(MyError::Err)
 }
@@ -28,7 +35,6 @@ fn css_key(i: &str) -> MyResult<String> {
         ret v.to_owned()
     }
 }
-
 
 fn css_keyval(i: &str) -> MyResult<CSSEntry> {
     parse!{i;
@@ -44,8 +50,9 @@ fn css_keyval(i: &str) -> MyResult<CSSEntry> {
 
 fn css_entry(i: &str) -> MyResult<CSSEntry> {
     parse!{i;
-        let pair = css_keyval();
-        ret pair
+        let entry = css_keyval()
+                <|> (i -> expr(i).map(CSSEntry::Expr));
+        ret entry
     }
 }
 
@@ -58,6 +65,36 @@ fn css_block(i: &str) -> MyResult<Vec<CSSEntry>> {
             token('}');
         ret keyvals;
     }
+}
+
+fn expr(i: &str) -> MyResult<Expr> {
+    parse!{i;
+        let expr = (i -> primitive(i).map(Expr::Prim));
+        ret expr
+    }
+}
+
+fn primitive(i: &str) -> MyResult<Primitive> {
+    parse!{i;
+        let val = (i -> primitive_string(i).map(Primitive::Str))
+              <|> (i -> primitive_bool(i).map(Primitive::Bool))
+              <|> (i -> primitive_unit(i).map(|(n,u)| Primitive::Unit(n,u)));
+        ret val
+    }
+}
+
+fn primitive_string(i: &str) -> MyResult<String> {
+    unimplemented!()
+}
+
+fn primitive_bool(i: &str) -> MyResult<bool> {
+    parse!{i;
+            (tokens("true") >> ret true) <|> (tokens("false") >> ret false)
+    }
+}
+
+fn primitive_unit(i: &str) -> MyResult<(f64,String)> {
+    unimplemented!()
 }
 
 #[cfg(test)]
