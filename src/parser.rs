@@ -84,7 +84,17 @@ fn primitive(i: &str) -> MyResult<Primitive> {
 }
 
 fn primitive_string(i: &str) -> MyResult<String> {
-    unimplemented!()
+    let mut is_escaped = false;
+    parse!{i;
+        let delim = token('"') <|> token('\'');
+        let s = take_till(|c| {
+                let res = if c == delim && !is_escaped { true } else { false };
+                if c == '\\' { is_escaped = true } else { is_escaped = false };
+                res
+            });
+            token(delim);
+        ret s.to_owned()
+    }
 }
 
 fn primitive_bool(i: &str) -> MyResult<bool> {
@@ -94,7 +104,30 @@ fn primitive_bool(i: &str) -> MyResult<bool> {
 }
 
 fn primitive_unit(i: &str) -> MyResult<(f64,String)> {
-    unimplemented!()
+    let is_unit = |c| c == '%' || (c > 'a' || c < 'z');
+    parse!{i;
+        let num = primitive_number();
+        let unit = take_while(is_unit);
+        ret (num, unit.to_owned())
+    }
+}
+
+fn primitive_number(i: &str) -> MyResult<f64> {
+    let digits = |i| take_while1(i, |c| c >= '0' && c <= '9');
+    let is_neg = |i| option(i, |i| token(i,'-').map(|_| true), false);
+
+    let res : MyResult<(bool,String)> = parse!{i;
+        let minus = is_neg();
+        let start = digits();
+        let suffix = (token('.') >> digits()) <|> (ret "");
+        ret (minus, [start, suffix].join("."))
+    };
+
+    res.map(|(minus, num_str)| {
+        let negate = if minus { -1f64 } else { 1f64 };
+        let num = num_str.parse::<f64>().expect("primitive_number parser unexpected failure");
+        num * negate
+    })
 }
 
 #[cfg(test)]
@@ -137,6 +170,38 @@ pub mod tests {
             CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you".to_owned() },
             CSSEntry::KeyVal{ key: "another".to_owned(), val: "two".to_owned() }
         ]));
+    }
+
+    #[test]
+    fn test_primitive_number() {
+
+        let nums : Vec<(&str,f64)> = vec![
+            ("-43.1", -43.1),
+            ("0.0", 0.0),
+            ("-0.0", 0.0),
+            ("100", 100.0),
+            ("99999.99999", 99999.99999)
+        ];
+
+        for (s,n) in nums {
+            let res = parse_only_str(|i| primitive_number(i), s);
+            assert_eq!(res, Ok(n));
+        }
+    }
+
+    #[test]
+    fn test_primitive_string() {
+
+        let strings : Vec<(&str,&str)> = vec![
+            ("\"he\\llo\"", "he\\llo"),
+            ("\"\"", ""),
+            (r#""escaped \"lark\"""#, r#"escaped "lark""#),
+        ];
+
+        for (s,n) in strings {
+            let res = parse_only_str(|i| primitive_string(i), s);
+            assert_eq!(res, Ok(n.to_owned()));
+        }
     }
 
 }
