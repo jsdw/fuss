@@ -85,15 +85,40 @@ fn primitive(i: &str) -> MyResult<Primitive> {
 
 fn primitive_string(i: &str) -> MyResult<String> {
     let mut is_escaped = false;
+    let mut out = vec![];
     parse!{i;
         let delim = token('"') <|> token('\'');
-        let s = take_till(|c| {
-                let res = if c == delim && !is_escaped { true } else { false };
-                if c == '\\' { is_escaped = true } else { is_escaped = false };
-                res
+            take_till(|c| {
+
+                //found closing delim, not escaped, so end:
+                if c == delim && !is_escaped {
+                    return true;
+                }
+
+                //not escaped, escape char seen, so ignore but escape next:
+                if !is_escaped && c == '\\' {
+                    is_escaped = true;
+                    return false;
+                }
+
+                //get char, converting it if it's escaped:
+                let mut actual = c;
+                if is_escaped {
+                    is_escaped = false;
+                    actual = match c {
+                        'n'  => '\n',
+                        't'  => '\t',
+                        '\\' => '\\',
+                        a    => a,
+                    }
+                }
+
+                out.push(actual);
+                return false;
+
             });
             token(delim);
-        ret s.to_owned()
+        ret out.into_iter().collect()
     }
 }
 
@@ -193,8 +218,11 @@ pub mod tests {
     fn test_primitive_string() {
 
         let strings : Vec<(&str,&str)> = vec![
-            ("\"he\\llo\"", "he\\llo"),
-            ("\"\"", ""),
+            (r#""hello""#, "hello"),
+            (r#""he\l\lo""#, "hello"),
+            (r#""he\\llo""#, r#"he\llo"#),
+            (r#"'he\\llo'"#, r#"he\llo"#),
+            (r#""""#, ""),
             (r#""escaped \"lark\"""#, r#"escaped "lark""#),
         ];
 
