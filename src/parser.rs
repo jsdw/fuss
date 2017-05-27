@@ -13,7 +13,10 @@ impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
     }
 }
 
-type MyResult<'a,T> = ParseResult<&'a str,T,MyError<parsers::Error<char>>>;
+type MyErr = MyError<parsers::Error<char>>;
+type MyResult<'a,T> = ParseResult<&'a str,T,MyErr>;
+
+const VAR_PREFIX: char = '$';
 
 fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,()> {
     let chars = toks.chars().collect::<Vec<char>>();
@@ -69,7 +72,9 @@ fn css_block(i: &str) -> MyResult<Vec<CSSEntry>> {
 
 fn expr(i: &str) -> MyResult<Expr> {
     parse!{i;
-        let expr = (i -> primitive(i).map(Expr::Prim));
+        let expr = (i -> primitive(i).map(Expr::Prim))
+               <|> if_then_else()
+               <|> function_declaration();
         ret expr
     }
 }
@@ -153,6 +158,53 @@ fn primitive_number(i: &str) -> MyResult<f64> {
         let num = num_str.parse::<f64>().expect("primitive_number parser unexpected failure");
         num * negate
     })
+}
+
+fn if_then_else(i: &str) -> MyResult<Expr> {
+    parse!{i;
+            tokens("if");
+            skip_spaces();
+        let cond = expr();
+            skip_spaces();
+            tokens("then");
+            skip_spaces();
+        let then = expr();
+            skip_spaces();
+            tokens("else");
+            skip_spaces();
+        let otherwise = expr();
+        ret Expr::If{ cond:Box::new(cond), then:Box::new(then), otherwise:Box::new(otherwise) }
+    }
+}
+
+fn variable_name(i: &str) -> MyResult<String> {
+    parse!{i;
+        token(VAR_PREFIX);
+        let name = take_while(|c| c > 'a' && c < 'z');
+        ret name.to_owned()
+    }
+}
+
+fn function_declaration(i: &str) -> MyResult<Expr> {
+    let sep = parser!{
+        skip_spaces();
+        token(',');
+        skip_spaces();
+        ret @ _,MyErr : ()
+    };
+
+    parse!{i;
+            token('(');
+            skip_spaces();
+        let vars = sep_by(variable_name, sep);
+            skip_spaces();
+            token(')');
+            skip_spaces();
+            tokens("=>");
+            skip_spaces();
+        let expr = expr();
+        ret Expr::Func{ inputs:vars, output: Box::new(expr) }
+    }
 }
 
 #[cfg(test)]
