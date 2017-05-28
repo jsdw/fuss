@@ -1,4 +1,4 @@
-use types::{Expr, CSSEntry, Primitive};
+use types::{Expr, Block, CSSEntry, Primitive};
 use chomp::prelude::*;
 use chomp::parsers;
 
@@ -18,10 +18,10 @@ type MyResult<'a,T> = ParseResult<&'a str,T,MyErr>;
 
 const VAR_PREFIX: char = '$';
 
-fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,()> {
+fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,String> {
     let chars = toks.chars().collect::<Vec<char>>();
     string(i, &chars)
-        .map(|_| ())
+        .map(|s| s.to_owned())
         .map_err(MyError::Err)
 }
 
@@ -72,23 +72,26 @@ fn css_block(i: &str) -> MyResult<Vec<CSSEntry>> {
 
 fn expr(i: &str) -> MyResult<Expr> {
     parse!{i;
-        let expr = (i -> primitive(i).map(Expr::Prim))
-               <|> if_then_else()
-               <|> function_declaration();
+        let expr = paren_expr()
+               <|> primitive_expr()
+               <|> if_then_else_expr()
+               <|> function_declaration_expr()
+               <|> application_expr()
+               <|> variable_name_expr();
         ret expr
     }
 }
 
-fn primitive(i: &str) -> MyResult<Primitive> {
+fn primitive_expr(i: &str) -> MyResult<Expr> {
     parse!{i;
-        let val = (i -> primitive_string(i).map(Primitive::Str))
-              <|> (i -> primitive_bool(i).map(Primitive::Bool))
-              <|> (i -> primitive_unit(i).map(|(n,u)| Primitive::Unit(n,u)));
-        ret val
+        let val = primitive_string()
+              <|> primitive_bool()
+              <|> primitive_unit();
+        ret Expr::Prim(val)
     }
 }
 
-fn primitive_string(i: &str) -> MyResult<String> {
+fn primitive_string(i: &str) -> MyResult<Primitive> {
     let mut is_escaped = false;
     let mut out = vec![];
     parse!{i;
@@ -123,26 +126,26 @@ fn primitive_string(i: &str) -> MyResult<String> {
 
             });
             token(delim);
-        ret out.into_iter().collect()
+        ret Primitive::Str(out.into_iter().collect())
     }
 }
 
-fn primitive_bool(i: &str) -> MyResult<bool> {
+fn primitive_bool(i: &str) -> MyResult<Primitive> {
     parse!{i;
-            (tokens("true") >> ret true) <|> (tokens("false") >> ret false)
+            (tokens("true") >> ret Primitive::Bool(true)) <|> (tokens("false") >> ret Primitive::Bool(false))
     }
 }
 
-fn primitive_unit(i: &str) -> MyResult<(f64,String)> {
-    let is_unit = |c| c == '%' || (c > 'a' || c < 'z');
+fn primitive_unit(i: &str) -> MyResult<Primitive> {
+    let is_unit = |c| c == '%' || (c >= 'a' && c <= 'z');
     parse!{i;
-        let num = primitive_number();
+        let num = number();
         let unit = take_while(is_unit);
-        ret (num, unit.to_owned())
+        ret Primitive::Unit(num, unit.to_owned())
     }
 }
 
-fn primitive_number(i: &str) -> MyResult<f64> {
+fn number(i: &str) -> MyResult<f64> {
     let digits = |i| take_while1(i, |c| c >= '0' && c <= '9');
     let is_neg = |i| option(i, |i| token(i,'-').map(|_| true), false);
 
@@ -160,7 +163,7 @@ fn primitive_number(i: &str) -> MyResult<f64> {
     })
 }
 
-fn if_then_else(i: &str) -> MyResult<Expr> {
+fn if_then_else_expr(i: &str) -> MyResult<Expr> {
     parse!{i;
             tokens("if");
             skip_spaces();
@@ -177,26 +180,39 @@ fn if_then_else(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn variable_name(i: &str) -> MyResult<String> {
+fn variable_name_expr(i: &str) -> MyResult<Expr> {
+    variable_string(i).map(Expr::Var)
+}
+
+fn variable_string(i: &str) -> MyResult<String> {
     parse!{i;
         token(VAR_PREFIX);
-        let name = take_while(|c| c > 'a' && c < 'z');
+        let name = raw_variable_string();
+        ret name
+    }
+}
+
+fn raw_variable_string(i: &str) -> MyResult<String> {
+    parse!{i;
+        let name = take_while1(|c| c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_');
         ret name.to_owned()
     }
 }
 
-fn function_declaration(i: &str) -> MyResult<Expr> {
-    let sep = parser!{
+fn function_arg_sep(i: &str) -> MyResult<()> {
+    parse!{i;
         skip_spaces();
         token(',');
         skip_spaces();
-        ret @ _,MyErr : ()
-    };
+        ret ()
+    }
+}
 
+fn function_declaration_expr(i: &str) -> MyResult<Expr> {
     parse!{i;
             token('(');
             skip_spaces();
-        let vars = sep_by(variable_name, sep);
+        let vars = sep_by(variable_string, function_arg_sep);
             skip_spaces();
             token(')');
             skip_spaces();
@@ -207,10 +223,66 @@ fn function_declaration(i: &str) -> MyResult<Expr> {
     }
 }
 
+fn paren_expr(i: &str) -> MyResult<Expr> {
+    parse!{i;
+            token('(');
+            skip_spaces();
+        let expr = expr();
+            skip_spaces();
+            token(')');
+        ret expr
+    }
+}
+
+fn prefix_application_expr(i: &str) -> MyResult<Expr> {
+    parse!{i;
+        let left = variable_name_expr() <|> paren_expr();
+            skip_spaces();
+            token('(');
+            skip_spaces();
+        let args = sep_by(expr, function_arg_sep);
+            skip_spaces();
+            token(')');
+        ret Expr::App{ expr: Box::new(left), args: args }
+    }
+}
+
+fn unary_application_expr(i: &str) -> MyResult<Expr> {
+    parse!{i;
+        let tok = token('!') <|> token('-');
+        let arg = primitive_expr() <|> variable_name_expr() <|> paren_expr();
+        ret Expr::App{ expr: Box::new(Expr::Var(tok.to_string())), args: vec![arg] }
+    }
+}
+
+fn application_expr(i: &str) -> MyResult<Expr> {
+
+    // let infix_app = parser!{
+    //     let left = primitive_expr() <|> variable_name_expr() <|> full_expr();
+    //         skip_spaces();
+    //     let func = take_while1(|c| {
+    //             c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
+    //         });
+    //         skip_spaces();
+    //     let right = primitive_expr() <|> variable_name_expr() <|> full_expr();
+    //     ret @ _,MyErr : Expr::App{ expr: Box::new(Expr::Var(func.to_owned())), args: vec![left,right] }
+    // };
+
+    parse!{i;
+        let res = prefix_application_expr();
+              //<|> unary_application_expr();
+        ret res
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
 
     use super::*;
+
+    fn s(s: &str) -> String {
+        s.to_owned()
+    }
 
     #[test]
     fn test_css_key() {
@@ -250,7 +322,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_primitive_number() {
+    fn test_number() {
 
         let nums : Vec<(&str,f64)> = vec![
             ("-43.1", -43.1),
@@ -261,7 +333,7 @@ pub mod tests {
         ];
 
         for (s,n) in nums {
-            let res = parse_only_str(|i| primitive_number(i), s);
+            let res = parse_only_str(|i| number(i), s);
             assert_eq!(res, Ok(n));
         }
     }
@@ -280,7 +352,40 @@ pub mod tests {
 
         for (s,n) in strings {
             let res = parse_only_str(|i| primitive_string(i), s);
-            assert_eq!(res, Ok(n.to_owned()));
+            assert_eq!(res, Ok( Primitive::Str(n.to_owned()) ) );
+        }
+    }
+
+    #[test]
+    fn test_function_declaration_expr() {
+
+        let decls = vec![
+           ( "($apPl_3s, $b2ananA) => true"
+           , Expr::Func{ inputs: vec![s("apPl_3s"),s("b2ananA")], output: Box::new(Expr::Prim(Primitive::Bool(true))) }) ,
+           ( "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse"
+           , Expr::Func{ inputs: vec![s("a"),s("b")], output: Box::new(Expr::Prim(Primitive::Bool(false))) })
+        ];
+
+        for (s,n) in decls {
+            let res = parse_only_str(|i| function_declaration_expr(i), s);
+            assert_eq!(res, Ok(n));
+        }
+    }
+
+    #[test]
+    fn test_application_expr() {
+
+        let decls = vec![
+           ( "$hello(2px, true)"
+           , Expr::App{
+                expr: Box::new(Expr::Var(s("hello"))),
+                args: vec![ Expr::Prim(Primitive::Unit(2.0,s("px"))), Expr::Prim(Primitive::Bool(true)) ]
+            })
+        ];
+
+        for (s,n) in decls {
+            let res = parse_only_str(|i| application_expr(i), s);
+            assert_eq!(res, Ok(n));
         }
     }
 
