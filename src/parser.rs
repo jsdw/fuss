@@ -250,27 +250,43 @@ fn prefix_application_expr(i: &str) -> MyResult<Expr> {
 fn unary_application_expr(i: &str) -> MyResult<Expr> {
     parse!{i;
         let tok = token('!') <|> token('-');
-        let arg = primitive_expr() <|> variable_name_expr() <|> paren_expr();
+        let arg = prefix_application_expr() <|> primitive_expr() <|> variable_name_expr() <|> paren_expr();
         ret Expr::App{ expr: Box::new(Expr::Var(tok.to_string())), args: vec![arg] }
     }
 }
 
+fn infix_application_expr(i: &str) -> MyResult<Expr> {
+
+    let mut exprs = vec![];
+    let mut ops = vec![];
+
+    let get_expr = parser!{
+        let expr = variable_name_expr() <|> unary_application_expr() <|> prefix_application_expr() <|> paren_expr();
+        ret @ Expr,MyErr : expr
+    };
+    let get_op = parser!{
+            skip_spaces();
+        let op = take_while1(|c| {
+                c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
+            });
+            skip_spaces();
+        ret @ String,MyErr : op.to_owned()
+    };
+
+    let parser: MyResult<Vec<()>> = sep_by1(i,
+        |i| get_expr(i).map(|e| { exprs.push(e); }),
+        |i| get_op(i).map(|op| { ops.push(op); })
+    );
+
+    parser.map(|_| Expr::Var("hi".to_owned()))
+    //@TODO Finish this: decide which order to build expr from ops in and do it.
+    // refactor to avoid sep_by accumulating vector
+}
+
 fn application_expr(i: &str) -> MyResult<Expr> {
-
-    // let infix_app = parser!{
-    //     let left = primitive_expr() <|> variable_name_expr() <|> full_expr();
-    //         skip_spaces();
-    //     let func = take_while1(|c| {
-    //             c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
-    //         });
-    //         skip_spaces();
-    //     let right = primitive_expr() <|> variable_name_expr() <|> full_expr();
-    //     ret @ _,MyErr : Expr::App{ expr: Box::new(Expr::Var(func.to_owned())), args: vec![left,right] }
-    // };
-
     parse!{i;
-        let res = prefix_application_expr();
-              //<|> unary_application_expr();
+        let res = prefix_application_expr()
+              <|> unary_application_expr();
         ret res
     }
 }
@@ -375,11 +391,33 @@ pub mod tests {
     #[test]
     fn test_application_expr() {
 
+        let var = |st| Box::new(Expr::Var(s(st)));
+
         let decls = vec![
-           ( "$hello(2px, true)"
-           , Expr::App{
-                expr: Box::new(Expr::Var(s("hello"))),
+            ( "$hello(2px, true)"
+            , Expr::App{
+                expr: var("hello"),
                 args: vec![ Expr::Prim(Primitive::Unit(2.0,s("px"))), Expr::Prim(Primitive::Bool(true)) ]
+            }) ,
+            ( "!$hello"
+            , Expr::App{
+                expr: var("!"),
+                args: vec![ Expr::Var(s("hello")) ]
+            }) ,
+            ( "!$hello()"
+            , Expr::App{
+                expr: var("!"),
+                args: vec![ Expr::App{ expr: var("hello"), args: vec![] } ]
+            }) ,
+            ( "!$hello($a)"
+            , Expr::App{
+                expr: var("!"),
+                args: vec![
+                    Expr::App{
+                        expr: var("hello"),
+                        args: vec![ Expr::Var(s("a")) ]
+                    }
+                ]
             })
         ];
 
