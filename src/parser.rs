@@ -259,36 +259,48 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
 
     let mut exprs = vec![];
     let mut ops = vec![];
-
-    let get_expr = parser!{
-        let expr = variable_name_expr() <|> unary_application_expr() <|> prefix_application_expr() <|> paren_expr();
-        ret @ Expr,MyErr : expr
+    let out = {
+        fn is_op_char(c: char) -> bool {
+            c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
+        };
+        let mut push_expr = |i| -> MyResult<()> {
+            let res = parse!{i;
+                    unary_application_expr()
+                <|> primitive_expr()
+                <|> prefix_application_expr()
+                <|> variable_name_expr()
+                <|> paren_expr()
+            };
+            res.map(|e| { exprs.push(e); })
+        };
+        let mut push_op = |i| -> MyResult<()> {
+            let res = parse!{i; skip_spaces(); let op = take_while1(is_op_char); skip_spaces(); ret op };
+            res.map(|op| { ops.push(op.to_owned()); })
+        };
+        push_expr(i).then(|i| skip_many1(i, |i| push_op(i).then(|i| push_expr(i))))
     };
-    let get_op = parser!{
-            skip_spaces();
-        let op = take_while1(|c| {
-                c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
-            });
-            skip_spaces();
-        ret @ String,MyErr : op.to_owned()
-    };
 
-    let parser: MyResult<Vec<()>> = sep_by1(i,
-        |i| get_expr(i).map(|e| { exprs.push(e); }),
-        |i| get_op(i).map(|op| { ops.push(op); })
-    );
+    out.map(|_| {
 
-    parser.map(|_| Expr::Var("hi".to_owned()))
-    //@TODO Finish this: decide which order to build expr from ops in and do it.
-    // refactor to avoid sep_by accumulating vector
+        // sort ops by precedence, preserving original indexes:
+        let mut ops_by_precedence = (0..)
+            .zip(ops)
+            .collect::<Vec<(u32,String)>>();
+        ops_by_precedence.sort_by(|&(_,ref a), &(_,ref b)| a.cmp(b)); //@TODO: proper sorting of ops by precendence!
+
+        // build up an Expr based on the ordering of ops:
+        for (idx,op) in ops_by_precedence {
+
+        }
+
+        Expr::Var("hi".to_owned())
+
+    })
+
 }
 
 fn application_expr(i: &str) -> MyResult<Expr> {
-    parse!{i;
-        let res = prefix_application_expr()
-              <|> unary_application_expr();
-        ret res
-    }
+    parse!{i; infix_application_expr() <|> prefix_application_expr() <|> unary_application_expr() }
 }
 
 #[cfg(test)]
