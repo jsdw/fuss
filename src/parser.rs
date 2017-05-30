@@ -72,12 +72,12 @@ fn css_block(i: &str) -> MyResult<Vec<CSSEntry>> {
 
 fn expr(i: &str) -> MyResult<Expr> {
     parse!{i;
-        let expr = paren_expr()
-               <|> primitive_expr()
+        let expr = application_expr()
                <|> if_then_else_expr()
                <|> function_declaration_expr()
-               <|> application_expr()
-               <|> variable_name_expr();
+               <|> primitive_expr()
+               <|> variable_name_expr()
+               <|> paren_expr();
         ret expr
     }
 }
@@ -257,8 +257,13 @@ fn unary_application_expr(i: &str) -> MyResult<Expr> {
 
 fn infix_application_expr(i: &str) -> MyResult<Expr> {
 
-    let mut exprs = vec![];
-    let mut ops = vec![];
+    use std::cell::RefCell;
+    use std::cmp::Ordering;
+
+    #[derive(Clone)]
+    enum Tok { E(Expr), O(String) }
+    let mut tokens: RefCell<Vec<Tok>> = RefCell::new(vec![]);
+
     let out = {
         fn is_op_char(c: char) -> bool {
             c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
@@ -271,32 +276,82 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
                 <|> variable_name_expr()
                 <|> paren_expr()
             };
-            res.map(|e| { exprs.push(e); })
+            res.map(|e| { tokens.borrow_mut().push(Tok::E(e)); })
         };
         let mut push_op = |i| -> MyResult<()> {
             let res = parse!{i; skip_spaces(); let op = take_while1(is_op_char); skip_spaces(); ret op };
-            res.map(|op| { ops.push(op.to_owned()); })
+            res.map(|op| { tokens.borrow_mut().push(Tok::O(op.to_owned())); })
         };
         push_expr(i).then(|i| skip_many1(i, |i| push_op(i).then(|i| push_expr(i))))
     };
 
+    // if we successfully parsed an infix expression, apply precedence rules to build correct Expr:
     out.map(|_| {
 
-        // sort ops by precedence, preserving original indexes:
-        let mut ops_by_precedence = (0..)
-            .zip(ops)
-            .collect::<Vec<(u32,String)>>();
-        ops_by_precedence.sort_by(|&(_,ref a), &(_,ref b)| a.cmp(b)); //@TODO: proper sorting of ops by precendence!
+        let mut tokens = tokens.into_inner();
+        assert!(tokens.len() >= 3, "expecting 3 or more tokens at least from infix parsing");
+        assert!(tokens.len() % 2 == 1, "expecting an odd length of tokens from infix op parsing");
 
-        // build up an Expr based on the ordering of ops:
-        for (idx,op) in ops_by_precedence {
+        while tokens.len() > 1 {
+
+            // find next token to make expr from:
+            let mut best_idx = 1;
+            let mut best_prec = 0;
+            let mut best_s = String::new();
+            for (idx,tok) in tokens.iter().enumerate() {
+                if let Tok::O(ref s) = *tok {
+                    let this_prec = get_operator_precedence(s);
+                    if this_prec > best_prec {
+                        best_idx = idx;
+                        best_prec = this_prec;
+                        best_s = s.clone();
+                    }
+                }
+            }
+
+            // build expression from op and surrounding exprs:
+            let left = tokens[best_idx-1].clone();
+            let right = tokens[best_idx+1].clone();
+            let exp = match (left,right) {
+                (Tok::E(left), Tok::E(right)) => Expr::App{
+                    expr: Box::new(Expr::Var(best_s)),
+                    args: vec![left, right]
+                },
+                _ => panic!("Expected Exprs on either side of tok for infix parsing")
+            };
+
+            //reassign tokens, splicing in the new expr in place of the triplet.
+            let mut new_tokens = Vec::with_capacity(tokens.len()-2);
+            for (idx,tok) in tokens.into_iter().enumerate() {
+                if idx == best_idx-1 {
+                    new_tokens.push(Tok::E(exp.clone()));
+                } else if idx != best_idx && idx != best_idx+1 {
+                    new_tokens.push(tok);
+                }
+            }
+            tokens = new_tokens;
 
         }
 
-        Expr::Var("hi".to_owned())
+        match tokens.remove(0) {
+            Tok::E(exp) => exp,
+            _ => panic!("Expected final tok to be an Expr")
+        }
 
     })
 
+}
+
+fn get_operator_precedence(op: &str) -> usize {
+    match op {
+        "^" => 8,
+        "*" | "/" => 7,
+        "+" | "-" => 6,
+        "==" | "!=" | "<" | "<=" | ">" | ">=" => 4,
+        "&&" => 3,
+        "||" => 2,
+        _ => 5
+    }
 }
 
 fn application_expr(i: &str) -> MyResult<Expr> {
@@ -437,6 +492,34 @@ pub mod tests {
             let res = parse_only_str(|i| application_expr(i), s);
             assert_eq!(res, Ok(n));
         }
+    }
+
+    #[test]
+    fn test_precedence() {
+
+        let same = vec![
+            ("1 + 2 + 3", "(1 + 2) + 3"),
+            ("1 + 2 * 3 + 4", "1 + (2 * 3) + 4"),
+            ("1 + 2 * 3 * 4 + 5", "1 + (2 * 3 * 4) + 5"),
+            ("1 * 2 / 3 * 4", "((1 * 2) / 3) * 4")
+        ];
+
+        let different = vec![
+            ("1 + 2 + 3", "1 + (2 + 3)")
+        ];
+
+        for (a,b) in same {
+            let res_a = parse_only_str(|i| expr(i), a);
+            let res_b = parse_only_str(|i| expr(i), b);
+            assert_eq!(res_a, res_b);
+        }
+
+        for (a,b) in different {
+            let res_a = parse_only_str(|i| expr(i), a);
+            let res_b = parse_only_str(|i| expr(i), b);
+            assert_ne!(res_a, res_b);
+        }
+
     }
 
 }

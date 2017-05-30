@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 /// Primitive values:
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Clone)]
 pub enum Primitive {
     Str(String),
     Bool(bool),
@@ -9,7 +9,7 @@ pub enum Primitive {
 }
 
 /// The possible things that can crop up in a CSS block
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Clone)]
 pub enum CSSEntry {
     Expr(Expr),
     KeyVal{ key: String, val: String }
@@ -18,7 +18,7 @@ pub enum CSSEntry {
 /// represents a CSS block, along with any scope that encloses it (variable definitions).
 /// one can access their way through scopes using '.', or plonk blocks (and other valid Exprs)
 /// into other block's css.
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Clone)]
 pub struct Block {
     scope: HashMap<String,Expr>,
     selector: String,
@@ -26,7 +26,7 @@ pub struct Block {
 }
 
 /// Anything that's an Expression
-#[derive(PartialEq,Debug)]
+#[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
     /// A primitive eg "hello", 12, 100%, 8px, true, false
     Prim(Primitive),
