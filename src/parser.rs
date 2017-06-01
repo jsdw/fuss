@@ -59,20 +59,47 @@ fn css_entry(i: &str) -> MyResult<CSSEntry> {
     }
 }
 
-fn css_block(i: &str) -> MyResult<Vec<CSSEntry>> {
+fn css_scope_variable(i: &str) -> MyResult<(String,Expr)> {
     parse!{i;
+        let name = variable_string();
+            token(':');
+            skip_spaces();
+        let expr = expr();
+            skip_spaces();
+            token(';');
+        ret (name.to_owned(),expr)
+    }
+}
+
+fn css_block(i: &str) -> MyResult<Block> {
+
+    use std::collections::HashMap;
+
+    let mut push_all = |i| {
+        let mut css_entries = vec![];
+        let mut scope = HashMap::new();
+        let res = sep_by1::<_,Vec<()>,_,_,_,_,_,_>(i, |i| or(i,
+                |i| { css_scope_variable(i).map(|(varname,expr)| { scope.insert(varname,expr); }) },
+                |i| { css_entry(i).map(|res| { css_entries.push(res); }) }), skip_spaces);
+
+        res.map(|_| (css_entries,scope))
+    };
+
+    parse!{i;
+        let selector = take_while(|c| c != '{');
             token('{');
             skip_spaces();
-        let keyvals = sep_by1(css_entry, skip_spaces);
+        let (css,scope) = push_all();
             skip_spaces();
             token('}');
-        ret keyvals;
+        ret Block{ scope:scope, selector:selector.to_owned(), css:css }
     }
 }
 
 fn expr(i: &str) -> MyResult<Expr> {
     parse!{i;
         let expr = application_expr()
+               <|> css_block_expr()
                <|> if_then_else_expr()
                <|> function_declaration_expr()
                <|> primitive_expr()
@@ -80,6 +107,10 @@ fn expr(i: &str) -> MyResult<Expr> {
                <|> paren_expr();
         ret expr
     }
+}
+
+fn css_block_expr(i: &str) -> MyResult<Expr> {
+    css_block(i).map(Expr::Block)
 }
 
 fn primitive_expr(i: &str) -> MyResult<Expr> {
@@ -396,15 +427,6 @@ pub mod tests {
     }
 
     #[test]
-    fn test_css_block() {
-        let res = parse_only_str(|i| css_block(i), "{\n\t -hello-there\t : you; another: two;\n\n}");
-        assert_eq!(res, Ok( vec![
-            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you".to_owned() },
-            CSSEntry::KeyVal{ key: "another".to_owned(), val: "two".to_owned() }
-        ]));
-    }
-
-    #[test]
     fn test_number() {
 
         let nums : Vec<(&str,f64)> = vec![
@@ -501,6 +523,7 @@ pub mod tests {
             ("1 + 2 + 3", "(1 + 2) + 3"),
             ("1 + 2 * 3 + 4", "1 + (2 * 3) + 4"),
             ("1 + 2 * 3 * 4 + 5", "1 + (2 * 3 * 4) + 5"),
+            ("1 + 2 * 3 * 4 + 5", "(1 + ((2 * 3) * 4)) + 5"),
             ("1 * 2 / 3 * 4", "((1 * 2) / 3) * 4")
         ];
 
@@ -519,6 +542,14 @@ pub mod tests {
             let res_b = parse_only_str(|i| expr(i), b);
             assert_ne!(res_a, res_b);
         }
+
+    }
+
+    #[test]
+    fn test_css_block() {
+
+        let res = parse_only_str(|i| application_expr(i), "{ $hello: 1; $another:2; }");
+        assert_eq!(res, Ok(Expr::Var(s("hello"))));
 
     }
 

@@ -20,9 +20,9 @@ pub enum CSSEntry {
 /// into other block's css.
 #[derive(PartialEq,Debug,Clone)]
 pub struct Block {
-    scope: HashMap<String,Expr>,
-    selector: String,
-    css: Vec<CSSEntry>
+    pub scope: HashMap<String,Expr>,
+    pub selector: String,
+    pub css: Vec<CSSEntry>
 }
 
 /// Anything that's an Expression
