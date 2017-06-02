@@ -4,7 +4,8 @@ use chomp::parsers;
 
 #[derive(PartialEq,Eq,Debug)]
 enum MyError<I> {
-    Err(I)
+    Err(I),
+    NotEnoughInfixTokens
 }
 
 impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
@@ -17,6 +18,15 @@ type MyErr = MyError<parsers::Error<char>>;
 type MyResult<'a,T> = ParseResult<&'a str,T,MyErr>;
 
 const VAR_PREFIX: char = '$';
+
+/// like sep_by1 except we ignore the result; this is useful for side effects, like
+/// collecting items up that match, without accumulating a vector of matches we'll ignore.
+fn skip_sep_by1<I: Input, E, R, F, N, V>(i: I, mut p: R, mut sep: F) -> ParseResult<I, (), E>
+    where E: From<N>,
+          R: FnMut(I) -> ParseResult<I, (), E>,
+          F: FnMut(I) -> ParseResult<I, V, N> {
+    p(i).then(|i| skip_many(i, |i| sep(i).then(&mut p)))
+}
 
 fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,String> {
     let chars = toks.chars().collect::<Vec<char>>();
@@ -86,9 +96,10 @@ fn css_block(i: &str) -> MyResult<Block> {
     use std::collections::HashMap;
 
     let mut push_all = |i| {
+
         let mut css_entries = vec![];
         let mut scope = HashMap::new();
-        let res = sep_by1::<_,Vec<()>,_,_,_,_,_,_>(i, |i| or(i,
+        let res = skip_sep_by1(i, |i| or(i,
                 |i| { css_scope_variable(i).map(|(varname,expr)| { scope.insert(varname,expr); }) },
                 |i| { css_entry(i).map(|res| { css_entries.push(res); }) }), skip_spaces);
 
@@ -323,13 +334,20 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
             let res = parse!{i; skip_spaces(); let op = take_while1(is_op_char); skip_spaces(); ret op };
             res.map(|op| { tokens.borrow_mut().push(Tok::O(op.to_owned())); })
         };
-        push_expr(i).then(|i| skip_many1(i, |i| push_op(i).then(|i| push_expr(i))))
+        skip_sep_by1(i, push_expr, push_op)
     };
 
-    // if we successfully parsed an infix expression, apply precedence rules to build correct Expr:
-    out.map(|_| {
+    out.bind(|i, _| {
+
+        //@TODO:
+        // 1. don't use E and O type stuff; just use 2 vectors.
+        // 2. return the EXPR here if there's just one to avoid needing to re-parse it.
 
         let mut tokens = tokens.into_inner();
+        if tokens.len() < 3 {
+            return i.err(MyError::NotEnoughInfixTokens);
+        }
+
         assert!(tokens.len() >= 3, "expecting 3 or more tokens at least from infix parsing");
         assert!(tokens.len() % 2 == 1, "expecting an odd length of tokens from infix op parsing");
 
@@ -375,7 +393,7 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
         }
 
         match tokens.remove(0) {
-            Tok::E(exp) => exp,
+            Tok::E(exp) => i.ret(exp),
             _ => panic!("Expected final tok to be an Expr")
         }
 
