@@ -42,19 +42,29 @@ fn css_key(i: &str) -> MyResult<String> {
 fn css_keyval(i: &str) -> MyResult<CSSEntry> {
     parse!{i;
         let key = css_key();
-            skip_horizontal_spaces();
             token(':');
-            skip_horizontal_spaces();
         let val = take_till(|c| c == ';');
             token(';');
-        ret CSSEntry::KeyVal{ key: key.to_owned(), val: val.to_owned() }
+        ret CSSEntry::KeyVal{ key: key.to_owned(), val: val.trim().to_owned() }
+    }
+}
+
+fn css_expr(i: &str) -> MyResult<CSSEntry> {
+    parse!{i;
+        let e = expr();
+            skip_spaces();
+            token(';');
+        ret CSSEntry::Expr(e)
     }
 }
 
 fn css_entry(i: &str) -> MyResult<CSSEntry> {
     parse!{i;
         let entry = css_keyval()
-                <|> (i -> expr(i).map(CSSEntry::Expr));
+                // allow css blocks to not need a semicolon after:
+                <|> (i -> css_block_expr(i).map(CSSEntry::Expr))
+                // css expressions need to end with a semi-colon:
+                <|> css_expr();
         ret entry
     }
 }
@@ -86,13 +96,13 @@ fn css_block(i: &str) -> MyResult<Block> {
     };
 
     parse!{i;
-        let selector = take_while(|c| c != '{');
+        let selector = take_while(|c| c != ';' && c != '{'); // hone what a valid CSS selector can be to reduce chance of miss parsing.
             token('{');
             skip_spaces();
         let (css,scope) = push_all();
             skip_spaces();
             token('}');
-        ret Block{ scope:scope, selector:selector.to_owned(), css:css }
+        ret Block{ scope:scope, selector:selector.trim().to_owned(), css:css }
     }
 }
 
@@ -297,7 +307,7 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
 
     let out = {
         fn is_op_char(c: char) -> bool {
-            c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
+            c == '.' || c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
         };
         let mut push_expr = |i| -> MyResult<()> {
             let res = parse!{i;
@@ -375,6 +385,7 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
 
 fn get_operator_precedence(op: &str) -> usize {
     match op {
+        "." => 10,
         "^" => 8,
         "*" | "/" => 7,
         "+" | "-" => 6,
@@ -399,14 +410,8 @@ pub mod tests {
     }
 
     #[test]
-    fn test_css_key() {
-        let res = parse_only_str(|i| css_key(i), "-hello-there : ");
-        assert_eq!(res, Ok("-hello-there".to_owned()));
-    }
-
-    #[test]
     fn test_css_keyval() {
-        let res = parse_only_str(|i| css_keyval(i), "-hello-there\t : you(123,456 );");
+        let res = parse_only_str(|i| css_keyval(i), "-hello-there: you(123,456 );");
         assert_eq!(res, Ok(
             CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you(123,456 )".to_owned() }
         ));
@@ -548,8 +553,60 @@ pub mod tests {
     #[test]
     fn test_css_block() {
 
-        let res = parse_only_str(|i| application_expr(i), "{ $hello: 1; $another:2; }");
-        assert_eq!(res, Ok(Expr::Var(s("hello"))));
+        let a = parse_only_str(|i| expr(i), "
+            .some-class:not(:last-child) {
+
+                $hello: ($a, $b) => $a + $b;
+                $another: 2;
+
+                $lark: {
+                    $sub1: 2px;
+                };
+
+                $hello(2px, 5px);
+                {
+                    border: 1px solid black;
+                    {
+                        lark: another thing hereee;
+                    }
+                }
+
+                if true then $hello else $bye;
+
+                & .a-sub-class .more.another,
+                .sub-clas-two {
+                    $subThing: -2px + 4px;
+                    color: red;
+                }
+
+                -moz-background-color:
+                                1px solid blue;
+                border-radius: 10px;
+
+                $more: $lark.$sub1;
+            }
+        ");
+
+        let b = parse_only_str(|i| expr(i), "
+            .some-class:not(:last-child) {
+
+                $hello: ($a, $b) => $a + $b;
+                $another: 2;
+                $lark: { $sub1: 2px; };
+                $more: $lark.$sub1;
+
+                $hello(2px, 5px);
+                { border: 1px solid black; { lark: another thing hereee; }}
+                if true then $hello else $bye;
+
+                & .a-sub-class .more.another,
+                .sub-clas-two { color: red; $subThing: -2px + 4px; }
+                -moz-background-color: 1px solid blue;
+                border-radius: 10px;
+            }
+        ");
+
+        assert_eq!(a, b);
 
     }
 
