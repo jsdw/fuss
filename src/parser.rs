@@ -4,8 +4,7 @@ use chomp::parsers;
 
 #[derive(PartialEq,Eq,Debug)]
 enum MyError<I> {
-    Err(I),
-    NotEnoughInfixTokens
+    Err(I)
 }
 
 impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
@@ -95,7 +94,7 @@ fn css_block(i: &str) -> MyResult<Block> {
 
     use std::collections::HashMap;
 
-    let mut push_all = |i| {
+    let push_all = |i| {
 
         let mut css_entries = vec![];
         let mut scope = HashMap::new();
@@ -119,13 +118,10 @@ fn css_block(i: &str) -> MyResult<Block> {
 
 fn expr(i: &str) -> MyResult<Expr> {
     parse!{i;
-        let expr = application_expr()
+        let expr = application_expr() // this will try parsing a bunch of exprs via infix_application_expr, so no need to try again here.
                <|> css_block_expr()
                <|> if_then_else_expr()
-               <|> function_declaration_expr()
-               <|> primitive_expr()
-               <|> variable_name_expr()
-               <|> paren_expr();
+               <|> function_declaration_expr();
         ret expr
     }
 }
@@ -309,18 +305,14 @@ fn unary_application_expr(i: &str) -> MyResult<Expr> {
 
 fn infix_application_expr(i: &str) -> MyResult<Expr> {
 
-    use std::cell::RefCell;
-    use std::cmp::Ordering;
-
-    #[derive(Clone)]
-    enum Tok { E(Expr), O(String) }
-    let mut tokens: RefCell<Vec<Tok>> = RefCell::new(vec![]);
+    let mut ops = vec![];
+    let mut exprs = vec![];
 
     let out = {
         fn is_op_char(c: char) -> bool {
             c == '.' || c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
         };
-        let mut push_expr = |i| -> MyResult<()> {
+        let push_expr = |i| -> MyResult<()> {
             let res = parse!{i;
                     unary_application_expr()
                 <|> primitive_expr()
@@ -328,74 +320,52 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
                 <|> variable_name_expr()
                 <|> paren_expr()
             };
-            res.map(|e| { tokens.borrow_mut().push(Tok::E(e)); })
+            res.map(|e| { exprs.push(e); })
         };
-        let mut push_op = |i| -> MyResult<()> {
-            let res = parse!{i; skip_spaces(); let op = take_while1(is_op_char); skip_spaces(); ret op };
-            res.map(|op| { tokens.borrow_mut().push(Tok::O(op.to_owned())); })
+        let push_op = |i| -> MyResult<()> {
+            let res = parse!{i;
+                    skip_spaces();
+                let op = take_while1(is_op_char);
+                    skip_spaces();
+                ret op
+            };
+            res.map(|op| { ops.push(op.to_owned()); })
         };
         skip_sep_by1(i, push_expr, push_op)
     };
 
     out.bind(|i, _| {
 
-        //@TODO:
-        // 1. don't use E and O type stuff; just use 2 vectors.
-        // 2. return the EXPR here if there's just one to avoid needing to re-parse it.
-
-        let mut tokens = tokens.into_inner();
-        if tokens.len() < 3 {
-            return i.err(MyError::NotEnoughInfixTokens);
+        // return the EXPR here if there aren't any ops, so that we don't have to
+        // try parsing it again elsewhere:
+        if exprs.len() == 1 {
+            return i.ret(exprs.remove(0));
         }
 
-        assert!(tokens.len() >= 3, "expecting 3 or more tokens at least from infix parsing");
-        assert!(tokens.len() % 2 == 1, "expecting an odd length of tokens from infix op parsing");
+        assert!(ops.len() == exprs.len() - 1, "Expecting one less op than expr for infix parsing");
 
-        while tokens.len() > 1 {
+        while exprs.len() > 1 {
 
-            // find next token to make expr from:
-            let mut best_idx = 1;
-            let mut best_prec = 0;
-            let mut best_s = String::new();
-            for (idx,tok) in tokens.iter().enumerate() {
-                if let Tok::O(ref s) = *tok {
-                    let this_prec = get_operator_precedence(s);
-                    if this_prec > best_prec {
-                        best_idx = idx;
-                        best_prec = this_prec;
-                        best_s = s.clone();
-                    }
-                }
-            }
+            // find next idx to construct expr from
+            let best_idx = ops.iter().enumerate().fold((1,0), |(best_idx,best_prec), (idx,op)|{
+                let this_prec = get_operator_precedence(op);
+                return if this_prec > best_prec { (idx,this_prec) } else { (best_idx,best_prec) }
+            }).0;
 
-            // build expression from op and surrounding exprs:
-            let left = tokens[best_idx-1].clone();
-            let right = tokens[best_idx+1].clone();
-            let exp = match (left,right) {
-                (Tok::E(left), Tok::E(right)) => Expr::App{
-                    expr: Box::new(Expr::Var(best_s)),
-                    args: vec![left, right]
-                },
-                _ => panic!("Expected Exprs on either side of tok for infix parsing")
+            // build next expr:
+            let new_expr = Expr::App{
+                expr: Box::new(Expr::Var(ops[best_idx].clone())),
+                args: vec![ exprs[best_idx].clone(), exprs[best_idx+1].clone() ]
             };
 
-            //reassign tokens, splicing in the new expr in place of the triplet.
-            let mut new_tokens = Vec::with_capacity(tokens.len()-2);
-            for (idx,tok) in tokens.into_iter().enumerate() {
-                if idx == best_idx-1 {
-                    new_tokens.push(Tok::E(exp.clone()));
-                } else if idx != best_idx && idx != best_idx+1 {
-                    new_tokens.push(tok);
-                }
-            }
-            tokens = new_tokens;
+            // update vecs with new expr, removing just-used bits:
+            ops.remove(best_idx);
+            exprs.remove(best_idx+1);
+            exprs[best_idx] = new_expr;
 
         }
 
-        match tokens.remove(0) {
-            Tok::E(exp) => i.ret(exp),
-            _ => panic!("Expected final tok to be an Expr")
-        }
+        i.ret(exprs.remove(0))
 
     })
 
@@ -624,6 +594,8 @@ pub mod tests {
             }
         ");
 
+        assert!(a.is_ok(), "Expecting valid Exprs to be parsed (a)");
+        assert!(b.is_ok(), "Expecting valid Exprs to be parsed (b)");
         assert_eq!(a, b);
 
     }
