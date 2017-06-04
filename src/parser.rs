@@ -13,8 +13,10 @@ impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
     }
 }
 
+trait MyInput<'a>: Input<Token=char,Buffer=&'a str> {}
+impl <'a,I: Input<Token=char,Buffer=&'a str>> MyInput<'a> for I {}
+type MyOutput<I,O> = ParseResult<I,O,MyErr>;
 type MyErr = MyError<parsers::Error<char>>;
-type MyResult<'a,T> = ParseResult<&'a str,T,MyErr>;
 
 const VAR_PREFIX: char = '$';
 
@@ -27,28 +29,28 @@ fn skip_sep_by1<I: Input, E, R, F, N, V>(i: I, mut p: R, mut sep: F) -> ParseRes
     p(i).then(|i| skip_many(i, |i| sep(i).then(&mut p)))
 }
 
-fn tokens<'a>(i: &'a str, toks: &str) -> MyResult<'a,String> {
+fn tokens<'a,I: MyInput<'a>>(i: I, toks: &str) -> MyOutput<I,String> {
     let chars = toks.chars().collect::<Vec<char>>();
     string(i, &chars)
         .map(|s| s.to_owned())
         .map_err(MyError::Err)
 }
 
-fn skip_horizontal_spaces(i: &str) -> MyResult<()> {
+fn skip_horizontal_spaces<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,()> {
     skip_while(i, |c| c == '\t' || c == ' ').map_err(MyError::Err)
 }
-fn skip_spaces(i: &str) -> MyResult<()> {
+fn skip_spaces<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,()> {
     skip_while(i, |c| c == '\t' || c == ' ' || c == '\n').map_err(MyError::Err)
 }
 
-fn css_key(i: &str) -> MyResult<String> {
+fn css_key<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,String> {
     parse!{i;
         let v = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
         ret v.to_owned()
     }
 }
 
-fn css_keyval(i: &str) -> MyResult<CSSEntry> {
+fn css_keyval<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,CSSEntry> {
     parse!{i;
         let key = css_key();
             token(':');
@@ -58,7 +60,7 @@ fn css_keyval(i: &str) -> MyResult<CSSEntry> {
     }
 }
 
-fn css_expr(i: &str) -> MyResult<CSSEntry> {
+fn css_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,CSSEntry> {
     parse!{i;
         let e = expr();
             skip_spaces();
@@ -67,7 +69,7 @@ fn css_expr(i: &str) -> MyResult<CSSEntry> {
     }
 }
 
-fn css_entry(i: &str) -> MyResult<CSSEntry> {
+fn css_entry<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,CSSEntry> {
     parse!{i;
         let entry = css_keyval()
                 // allow css blocks to not need a semicolon after:
@@ -78,7 +80,7 @@ fn css_entry(i: &str) -> MyResult<CSSEntry> {
     }
 }
 
-fn css_scope_variable(i: &str) -> MyResult<(String,Expr)> {
+fn css_scope_variable<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,(String,Expr)> {
     parse!{i;
         let name = variable_string();
             token(':');
@@ -90,7 +92,7 @@ fn css_scope_variable(i: &str) -> MyResult<(String,Expr)> {
     }
 }
 
-fn css_block(i: &str) -> MyResult<Block> {
+fn css_block<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Block> {
 
     use std::collections::HashMap;
 
@@ -116,7 +118,7 @@ fn css_block(i: &str) -> MyResult<Block> {
     }
 }
 
-fn expr(i: &str) -> MyResult<Expr> {
+fn expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
         let expr = application_expr() // this will try parsing a bunch of exprs via infix_application_expr, so no need to try again here.
                <|> css_block_expr()
@@ -126,11 +128,11 @@ fn expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn css_block_expr(i: &str) -> MyResult<Expr> {
+fn css_block_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     css_block(i).map(Expr::Block)
 }
 
-fn primitive_expr(i: &str) -> MyResult<Expr> {
+fn primitive_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
         let val = primitive_string()
               <|> primitive_bool()
@@ -139,7 +141,7 @@ fn primitive_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn primitive_string(i: &str) -> MyResult<Primitive> {
+fn primitive_string<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Primitive> {
     let mut is_escaped = false;
     let mut out = vec![];
     parse!{i;
@@ -178,13 +180,13 @@ fn primitive_string(i: &str) -> MyResult<Primitive> {
     }
 }
 
-fn primitive_bool(i: &str) -> MyResult<Primitive> {
+fn primitive_bool<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Primitive> {
     parse!{i;
             (tokens("true") >> ret Primitive::Bool(true)) <|> (tokens("false") >> ret Primitive::Bool(false))
     }
 }
 
-fn primitive_unit(i: &str) -> MyResult<Primitive> {
+fn primitive_unit<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Primitive> {
     let is_unit = |c| c == '%' || (c >= 'a' && c <= 'z');
     parse!{i;
         let num = number();
@@ -193,11 +195,11 @@ fn primitive_unit(i: &str) -> MyResult<Primitive> {
     }
 }
 
-fn number(i: &str) -> MyResult<f64> {
+fn number<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,f64> {
     let digits = |i| take_while1(i, |c| c >= '0' && c <= '9');
     let is_neg = |i| option(i, |i| token(i,'-').map(|_| true), false);
 
-    let res : MyResult<(bool,String)> = parse!{i;
+    let res : MyOutput<I,(bool,String)> = parse!{i;
         let minus = is_neg();
         let start = digits();
         let suffix = (token('.') >> digits()) <|> (ret "");
@@ -211,7 +213,7 @@ fn number(i: &str) -> MyResult<f64> {
     })
 }
 
-fn if_then_else_expr(i: &str) -> MyResult<Expr> {
+fn if_then_else_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
             tokens("if");
             skip_spaces();
@@ -228,11 +230,11 @@ fn if_then_else_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn variable_name_expr(i: &str) -> MyResult<Expr> {
+fn variable_name_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     variable_string(i).map(Expr::Var)
 }
 
-fn variable_string(i: &str) -> MyResult<String> {
+fn variable_string<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,String> {
     parse!{i;
         token(VAR_PREFIX);
         let name = raw_variable_string();
@@ -240,14 +242,14 @@ fn variable_string(i: &str) -> MyResult<String> {
     }
 }
 
-fn raw_variable_string(i: &str) -> MyResult<String> {
+fn raw_variable_string<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,String> {
     parse!{i;
         let name = take_while1(|c| c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_');
         ret name.to_owned()
     }
 }
 
-fn function_arg_sep(i: &str) -> MyResult<()> {
+fn function_arg_sep<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,()> {
     parse!{i;
         skip_spaces();
         token(',');
@@ -256,7 +258,7 @@ fn function_arg_sep(i: &str) -> MyResult<()> {
     }
 }
 
-fn function_declaration_expr(i: &str) -> MyResult<Expr> {
+fn function_declaration_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
             token('(');
             skip_spaces();
@@ -271,7 +273,7 @@ fn function_declaration_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn paren_expr(i: &str) -> MyResult<Expr> {
+fn paren_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
             token('(');
             skip_spaces();
@@ -282,7 +284,7 @@ fn paren_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn prefix_application_expr(i: &str) -> MyResult<Expr> {
+fn prefix_application_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
         let left = variable_name_expr() <|> paren_expr();
             skip_spaces();
@@ -295,7 +297,7 @@ fn prefix_application_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn unary_application_expr(i: &str) -> MyResult<Expr> {
+fn unary_application_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i;
         let tok = token('!') <|> token('-');
         let arg = prefix_application_expr() <|> primitive_expr() <|> variable_name_expr() <|> paren_expr();
@@ -303,7 +305,7 @@ fn unary_application_expr(i: &str) -> MyResult<Expr> {
     }
 }
 
-fn infix_application_expr(i: &str) -> MyResult<Expr> {
+fn infix_application_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
 
     let mut ops = vec![];
     let mut exprs = vec![];
@@ -312,7 +314,7 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
         fn is_op_char(c: char) -> bool {
             c == '.' || c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
         };
-        let push_expr = |i| -> MyResult<()> {
+        let push_expr = |i: I| -> MyOutput<I,()> {
             let res = parse!{i;
                     unary_application_expr()
                 <|> primitive_expr()
@@ -322,12 +324,12 @@ fn infix_application_expr(i: &str) -> MyResult<Expr> {
             };
             res.map(|e| { exprs.push(e); })
         };
-        let push_op = |i| -> MyResult<()> {
+        let push_op = |i: I| -> MyOutput<I,()> {
             let res = parse!{i;
                     skip_spaces();
                 let op = take_while1(is_op_char);
                     skip_spaces();
-                ret op
+                ret @ &str,_ : op
             };
             res.map(|op| { ops.push(op.to_owned()); })
         };
@@ -384,7 +386,7 @@ fn get_operator_precedence(op: &str) -> usize {
     }
 }
 
-fn application_expr(i: &str) -> MyResult<Expr> {
+fn application_expr<'a,I: MyInput<'a>>(i: I) -> MyOutput<I,Expr> {
     parse!{i; infix_application_expr() <|> prefix_application_expr() <|> unary_application_expr() }
 }
 
