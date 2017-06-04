@@ -18,12 +18,13 @@ impl <I: Input<Token=char>> MyInput for I {}
 type MyOutput<I,O> = ParseResult<I,O,MyErr>;
 type MyErr = MyError<parsers::Error<char>>;
 
+// convert a buffer of the sort MyInput uses, and thus which
+// parsers like take_while1 return, into a String.
 fn as_string<B: Buffer<Token=char>>(buf: B) -> String {
     let mut s = String::with_capacity(buf.len());
     buf.iterate(|c| s.push(c));
     s
 }
-
 
 const VAR_PREFIX: char = '$';
 
@@ -41,9 +42,9 @@ fn skip_tokens<I: MyInput>(i: I, toks: &str) -> MyOutput<I,I::Buffer> {
     string(i, &chars).map_err(MyError::Err)
 }
 
-fn skip_horizontal_spaces<I: MyInput>(i: I) -> MyOutput<I,()> {
-    skip_while(i, |c| c == '\t' || c == ' ').map_err(MyError::Err)
-}
+// fn skip_horizontal_spaces<I: MyInput>(i: I) -> MyOutput<I,()> {
+//     skip_while(i, |c| c == '\t' || c == ' ').map_err(MyError::Err)
+// }
 fn skip_spaces<I: MyInput>(i: I) -> MyOutput<I,()> {
     skip_while(i, |c| c == '\t' || c == ' ' || c == '\n').map_err(MyError::Err)
 }
