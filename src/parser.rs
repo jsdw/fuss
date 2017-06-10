@@ -1,10 +1,12 @@
-use types::{Expr, Block, CSSEntry, Primitive};
+use types::{Expression, Expr, Block, CSSEntry, Primitive, Position};
+use chomp::types::numbering::InputPosition;
 use chomp::prelude::*;
 use chomp::parsers;
 
 #[derive(PartialEq,Eq,Debug)]
 enum MyError<I> {
-    Err(I)
+    Err(I),
+    UnknownError
 }
 
 impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
@@ -12,16 +14,56 @@ impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
         MyError::Err(e)
     }
 }
+impl<I> From<()> for MyError<I> {
+    fn from(e: ()) -> MyError<I> {
+        MyError::UnknownError
+    }
+}
 
-trait MyInput: Input<Token=char> {}
-impl <I: Input<Token=char>> MyInput for I {}
+/// describe how to get a Position:
+trait Positioned {
+    fn get_position(&self) -> Position;
+}
+impl <I: Input<Token=char>> Positioned for InputPosition<I,Position> {
+    fn get_position(&self) -> Position {
+        self.position()
+    }
+}
+impl<'a> Positioned for &'a str {
+    fn get_position(&self) -> Position {
+        Position::new()
+    }
+}
+
+// macro_rules! parse_expr {
+//     ($i:expr; $($t:tt)*) => ({
+
+//         pos($i).bind(|i,start_pos| {
+//             let res = parse!{i; $($t)* };
+//             res.map(|expr| {
+//                 (expr,start_pos)
+//             })
+//         }).bind(|i,(res,start_pos)| {
+
+//             pos(i).map(|end_pos| {
+//                 Expression{ start:start_pos, end:end_pos, expr:res}
+//             })
+
+//         })
+
+//     })
+// }
+
+trait MyInput: Input<Token=char> + Positioned {}
+impl <I: Input<Token=char> + Positioned> MyInput for I {}
 type MyOutput<I,O> = ParseResult<I,O,MyErr>;
 type MyErr = MyError<parsers::Error<char>>;
 
-// convert a buffer of the sort MyInput uses, and thus which
-// parsers like take_while1 return, into a String.
+/// convert a buffer of the sort MyInput uses, and thus which
+/// parsers like take_while1 return, into a String.
 fn as_string<B: Buffer<Token=char>>(buf: B) -> String {
     let mut s = String::with_capacity(buf.len());
+
     buf.iterate(|c| s.push(c));
     s
 }
@@ -40,6 +82,11 @@ fn skip_sep_by1<I: Input, E, R, F, N, V>(i: I, mut p: R, mut sep: F) -> ParseRes
 fn skip_tokens<I: MyInput>(i: I, toks: &str) -> MyOutput<I,I::Buffer> {
     let chars = toks.chars().collect::<Vec<char>>();
     string(i, &chars).map_err(MyError::Err)
+}
+
+/// Get the current position of the input:
+fn pos<I: MyInput>(i: I) -> MyOutput<I,Position> {
+    i.ret(i.get_position()).map_err(|()| MyError::UnknownError)
 }
 
 // fn skip_horizontal_spaces<I: MyInput>(i: I) -> MyOutput<I,()> {
@@ -86,7 +133,7 @@ fn css_entry<I: MyInput>(i: I) -> MyOutput<I,CSSEntry> {
     }
 }
 
-fn css_scope_variable<I: MyInput>(i: I) -> MyOutput<I,(String,Expr)> {
+fn css_scope_variable<I: MyInput>(i: I) -> MyOutput<I,(String,Expression)> {
     parse!{i;
         let name = variable_string();
             token(':');
@@ -124,7 +171,7 @@ fn css_block<I: MyInput>(i: I) -> MyOutput<I,Block> {
     }
 }
 
-fn expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
         let expr = application_expr() // this will try parsing a bunch of exprs via infix_application_expr, so no need to try again here.
                <|> css_block_expr()
@@ -134,16 +181,23 @@ fn expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
     }
 }
 
-fn css_block_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
-    css_block(i).map(Expr::Block)
+fn css_block_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
+    parse!{i;
+        let start_pos = pos();
+        let block = css_block();
+        let end_pos = pos();
+        ret Expression{ start:start_pos, end:end_pos, expr:Expr::Block(block) }
+    }
 }
 
-fn primitive_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn primitive_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
         let val = primitive_string()
               <|> primitive_bool()
               <|> primitive_unit();
-        ret Expr::Prim(val)
+        let end_pos = pos();
+        ret Expression{ start:start_pos, end:end_pos, expr:Expr::Prim(val) }
     }
 }
 
@@ -219,8 +273,9 @@ fn number<I: MyInput>(i: I) -> MyOutput<I,f64> {
     })
 }
 
-fn if_then_else_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn if_then_else_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
             skip_tokens("if");
             skip_spaces();
         let cond = expr();
@@ -232,12 +287,26 @@ fn if_then_else_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
             skip_tokens("else");
             skip_spaces();
         let otherwise = expr();
-        ret Expr::If{ cond:Box::new(cond), then:Box::new(then), otherwise:Box::new(otherwise) }
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:Expr::If{ cond:Box::new(cond), then:Box::new(then), otherwise:Box::new(otherwise) }
+        }
     }
 }
 
-fn variable_name_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
-    variable_string(i).map(Expr::Var)
+fn variable_name_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
+    parse!{i;
+        let start_pos = pos();
+        let var = variable_string();
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:Expr::Var(var)
+        }
+    }
 }
 
 fn variable_string<I: MyInput>(i: I) -> MyOutput<I,String> {
@@ -264,8 +333,9 @@ fn function_arg_sep<I: MyInput>(i: I) -> MyOutput<I,()> {
     }
 }
 
-fn function_declaration_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn function_declaration_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
             token('(');
             skip_spaces();
         let vars = sep_by(variable_string, function_arg_sep);
@@ -275,23 +345,35 @@ fn function_declaration_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
             skip_tokens("=>");
             skip_spaces();
         let expr = expr();
-        ret Expr::Func{ inputs:vars, output: Box::new(expr) }
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:Expr::Func{ inputs:vars, output: Box::new(expr) }
+        }
     }
 }
 
-fn paren_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn paren_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
             token('(');
             skip_spaces();
         let expr = expr();
             skip_spaces();
             token(')');
-        ret expr
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:expr.expr
+        }
     }
 }
 
-fn prefix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn prefix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
         let left = variable_name_expr() <|> paren_expr();
             skip_spaces();
             token('(');
@@ -299,19 +381,38 @@ fn prefix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
         let args = sep_by(expr, function_arg_sep);
             skip_spaces();
             token(')');
-        ret Expr::App{ expr: Box::new(left), args: args }
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:Expr::App{ expr: Box::new(left), args: args }
+        }
     }
 }
 
-fn unary_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn unary_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
+        let start_pos = pos();
         let tok = token('!') <|> token('-');
+        let end_pos_tok = pos();
         let arg = prefix_application_expr() <|> primitive_expr() <|> variable_name_expr() <|> paren_expr();
-        ret Expr::App{ expr: Box::new(Expr::Var(tok.to_string())), args: vec![arg] }
+        let end_pos = pos();
+        ret Expression{
+            start:start_pos,
+            end:end_pos,
+            expr:Expr::App{
+                expr: Box::new(Expression{
+                    start:start_pos,
+                    end:end_pos_tok,
+                    expr:Expr::Var(tok.to_string())
+                }),
+                args: vec![arg]
+            }
+        }
     }
 }
 
-fn infix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn infix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
 
     let mut ops = vec![];
     let mut exprs = vec![];
@@ -333,9 +434,11 @@ fn infix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
         let push_op = |i: I| -> MyOutput<I,()> {
             let res = parse!{i;
                     skip_spaces();
+                let start_pos = pos();
                 let op = take_while1(is_op_char);
+                let end_pos = pos();
                     skip_spaces();
-                ret as_string(op)
+                ret (as_string(op),start_pos,end_pos)
             };
             res.map(|op| { ops.push(op); })
         };
@@ -356,14 +459,25 @@ fn infix_application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
 
             // find next idx to construct expr from
             let best_idx = ops.iter().enumerate().fold((1,0), |(best_idx,best_prec), (idx,op)|{
-                let this_prec = get_operator_precedence(op);
+                let this_prec = get_operator_precedence(&op.0);
                 return if this_prec > best_prec { (idx,this_prec) } else { (best_idx,best_prec) }
             }).0;
 
             // build next expr:
-            let new_expr = Expr::App{
-                expr: Box::new(Expr::Var(ops[best_idx].clone())),
-                args: vec![ exprs[best_idx].clone(), exprs[best_idx+1].clone() ]
+            let first_arg = exprs[best_idx].clone();
+            let second_arg = exprs[best_idx+1].clone();
+            let (op,op_start,op_end) = ops[best_idx].clone();
+            let new_expr = Expression{
+                start: first_arg.start,
+                end: second_arg.end,
+                expr: Expr::App{
+                    expr: Box::new(Expression{
+                        start: op_start,
+                        end: op_end,
+                        expr: Expr::Var(op)
+                    }),
+                    args: vec![ first_arg, second_arg ]
+                }
             };
 
             // update vecs with new expr, removing just-used bits:
@@ -392,7 +506,7 @@ fn get_operator_precedence(op: &str) -> usize {
     }
 }
 
-fn application_expr<I: MyInput>(i: I) -> MyOutput<I,Expr> {
+fn application_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i; infix_application_expr() <|> prefix_application_expr() <|> unary_application_expr() }
 }
 
@@ -403,6 +517,10 @@ pub mod tests {
 
     fn s(s: &str) -> String {
         s.to_owned()
+    }
+
+    fn e(e: Expr) -> Expression {
+        Expression{start:Position::new(), end:Position::new(), expr:e}
     }
 
     #[test]
@@ -467,13 +585,13 @@ pub mod tests {
 
         let decls = vec![
            ( "($apPl_3s, $b2ananA) => true"
-           , Expr::Func{ inputs: vec![s("apPl_3s"),s("b2ananA")], output: Box::new(Expr::Prim(Primitive::Bool(true))) }) ,
+           , Expr::Func{ inputs: vec![s("apPl_3s"),s("b2ananA")], output: Box::new(e(Expr::Prim(Primitive::Bool(true)))) }) ,
            ( "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse"
-           , Expr::Func{ inputs: vec![s("a"),s("b")], output: Box::new(Expr::Prim(Primitive::Bool(false))) })
+           , Expr::Func{ inputs: vec![s("a"),s("b")], output: Box::new(e(Expr::Prim(Primitive::Bool(false)))) })
         ];
 
         for (s,n) in decls {
-            let res = parse_only_str(|i| function_declaration_expr(i), s);
+            let res = parse_only_str(|i| function_declaration_expr(i), s).map(|e| e.expr);
             assert_eq!(res, Ok(n));
         }
     }
