@@ -518,6 +518,31 @@ pub mod tests {
         Expression{start:Position::new(), end:Position::new(), expr:e}
     }
 
+    macro_rules! parse_test {
+        ($i:ident using $test:expr; $( $input:expr => $output:expr );+ ) => (
+            #[test]
+            fn $i() {
+
+                let mapping = vec![
+                    $( ($input, $output) ),+
+                ];
+                for (input,output) in mapping {
+                    let res = parse_only_str(|i| $test(i), input);
+                    assert_eq!(res.map(|e| e.expr), Ok(output));
+                }
+
+            }
+        );
+        ($i:ident; $rest:tt ) => (
+            parse_test!{ $i; expr; $rest }
+        )
+    }
+
+    parse_test!{hi using expr;
+        "$hello" => Expr::Var(s("hello"));
+        "4" => Expr::Prim(Primitive::Unit(4f64,s("")))
+    }
+
     #[test]
     fn test_css_keyval() {
         let res = parse_only_str(|i| css_keyval(i), "-hello-there: you(123,456 );");
