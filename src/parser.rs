@@ -15,7 +15,7 @@ impl<I> From<parsers::Error<I>> for MyError<parsers::Error<I>> {
     }
 }
 impl<I> From<()> for MyError<I> {
-    fn from(e: ()) -> MyError<I> {
+    fn from(_: ()) -> MyError<I> {
         MyError::UnknownError
     }
 }
@@ -86,7 +86,8 @@ fn skip_tokens<I: MyInput>(i: I, toks: &str) -> MyOutput<I,I::Buffer> {
 
 /// Get the current position of the input:
 fn pos<I: MyInput>(i: I) -> MyOutput<I,Position> {
-    i.ret(i.get_position()).map_err(|()| MyError::UnknownError)
+    let pos = i.get_position();
+    i.ret(pos).map_err(|()| MyError::UnknownError)
 }
 
 // fn skip_horizontal_spaces<I: MyInput>(i: I) -> MyOutput<I,()> {
@@ -356,18 +357,12 @@ fn function_declaration_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
 
 fn paren_expr<I: MyInput>(i: I) -> MyOutput<I,Expression> {
     parse!{i;
-        let start_pos = pos();
             token('(');
             skip_spaces();
         let expr = expr();
             skip_spaces();
             token(')');
-        let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:expr.expr
-        }
+        ret expr
     }
 }
 
@@ -599,39 +594,39 @@ pub mod tests {
     #[test]
     fn test_application_expr() {
 
-        let var = |st| Box::new(Expr::Var(s(st)));
+        let var = |st| Box::new(e(Expr::Var(s(st))));
 
         let decls = vec![
             ( "$hello(2px, true)"
             , Expr::App{
                 expr: var("hello"),
-                args: vec![ Expr::Prim(Primitive::Unit(2.0,s("px"))), Expr::Prim(Primitive::Bool(true)) ]
+                args: vec![ e(Expr::Prim(Primitive::Unit(2.0,s("px")))), e(Expr::Prim(Primitive::Bool(true))) ]
             }) ,
             ( "!$hello"
             , Expr::App{
                 expr: var("!"),
-                args: vec![ Expr::Var(s("hello")) ]
+                args: vec![ e(Expr::Var(s("hello"))) ]
             }) ,
             ( "!$hello()"
             , Expr::App{
                 expr: var("!"),
-                args: vec![ Expr::App{ expr: var("hello"), args: vec![] } ]
+                args: vec![ e(Expr::App{ expr: var("hello"), args: vec![] }) ]
             }) ,
             ( "!$hello($a)"
             , Expr::App{
                 expr: var("!"),
                 args: vec![
-                    Expr::App{
+                    e(Expr::App{
                         expr: var("hello"),
-                        args: vec![ Expr::Var(s("a")) ]
-                    }
+                        args: vec![ e(Expr::Var(s("a"))) ]
+                    })
                 ]
             })
         ];
 
         for (s,n) in decls {
             let res = parse_only_str(|i| application_expr(i), s);
-            assert_eq!(res, Ok(n));
+            assert_eq!(res, Ok(e(n)));
         }
     }
 
