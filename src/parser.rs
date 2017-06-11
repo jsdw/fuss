@@ -518,45 +518,44 @@ pub mod tests {
         Expression{start:Position::new(), end:Position::new(), expr:e}
     }
 
+    // parses the inner part of the macro; this can determine what
+    // conditions we can test for.
+    macro_rules! push_test_condition {
+        ($vec:expr; $input:expr => $output:expr; $($rest:tt)*) => {
+            $vec.push(($input,$output));
+            push_test_condition!{$vec; $($rest)* };
+        };
+        ($vec:expr;) => ( () )
+    }
+
+    // parse the outer part of the test macro.
     macro_rules! parse_test {
-        ($i:ident using $test:expr; $( $input:expr => $output:expr );+ ) => (
+        ($i:ident using $test:expr; $($rest:tt)+) => (
             #[test]
             fn $i() {
-
-                let mapping = vec![
-                    $( ($input, $output) ),+
-                ];
+                let mut mapping = vec![];
+                push_test_condition!{mapping; $($rest)+ };
                 for (input,output) in mapping {
                     let res = parse_only_str(|i| $test(i), input);
-                    assert_eq!(res.map(|e| e.expr), Ok(output));
+                    assert_eq!(res, Ok(output));
                 }
-
             }
         );
-        ($i:ident; $rest:tt ) => (
-            parse_test!{ $i; expr; $rest }
+        ($i:ident; $($rest:tt)+ ) => (
+            parse_test!{ $i using expr; $($rest)+ }
         )
     }
 
     parse_test!{hi using expr;
-        "$hello" => Expr::Var(s("hello"));
-        "4" => Expr::Prim(Primitive::Unit(4f64,s("")))
+        "$hello" => e(Expr::Var(s("hello")));
+        "4" => e(Expr::Prim(Primitive::Unit(4f64,s(""))));
     }
 
-    #[test]
-    fn test_css_keyval() {
-        let res = parse_only_str(|i| css_keyval(i), "-hello-there: you(123,456 );");
-        assert_eq!(res, Ok(
-            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you(123,456 )".to_owned() }
-        ));
-    }
-
-    #[test]
-    fn test_css_keyval_compact() {
-        let res = parse_only_str(|i| css_keyval(i), "-hello-there:you;");
-        assert_eq!(res, Ok(
-            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you".to_owned() }
-        ));
+    parse_test!{test_css_keyval using css_keyval;
+        "-hello-there: you(123,456 );" =>
+            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you(123,456 )".to_owned() };
+        "-hello-there:you;" =>
+            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you".to_owned() };
     }
 
     #[test]
