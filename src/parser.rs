@@ -518,14 +518,24 @@ pub mod tests {
         Expression{start:Position::new(), end:Position::new(), expr:e}
     }
 
+    fn var(name: &str) -> Box<Expression> {
+        Box::new(e(Expr::Var(s(name))))
+    }
+
     // parses the inner part of the macro; this can determine what
     // conditions we can test for.
     macro_rules! push_test_condition {
-        ($vec:expr; $input:expr => $output:expr; $($rest:tt)*) => {
-            $vec.push(($input,$output));
-            push_test_condition!{$vec; $($rest)* };
+        // test that the thing on the left is parsed into the thing on the right:
+        ($vec:ident using $test:expr; $input:expr => $output:expr; $($rest:tt)*) => {
+            $vec.push(( parse_only_str($test,$input), Ok($output) ));
+            push_test_condition!{$vec using $test; $($rest)* };
         };
-        ($vec:expr;) => ( () )
+        // test that the hting on the left and thing on the right both parse into the same thing:
+        ($vec:ident using $test:expr; $input:expr , $output:expr; $($rest:tt)*) => {
+            $vec.push(( parse_only_str($test,$input), parse_only_str($test,$output) ));
+            push_test_condition!{$vec using $test; $($rest)* };
+        };
+        ($vec:ident using $test:expr;) => ( () )
     }
 
     // parse the outer part of the test macro.
@@ -534,21 +544,17 @@ pub mod tests {
             #[test]
             fn $i() {
                 let mut mapping = vec![];
-                push_test_condition!{mapping; $($rest)+ };
+                push_test_condition!{mapping using $test; $($rest)+ };
                 for (input,output) in mapping {
-                    let res = parse_only_str(|i| $test(i), input);
-                    assert_eq!(res, Ok(output));
+                    assert!(input.is_ok(), "input is not Ok: {:?}", input);
+                    assert!(output.is_ok(), "output is not Ok: {:?}", output);
+                    assert_eq!(input, output);
                 }
             }
         );
         ($i:ident; $($rest:tt)+ ) => (
             parse_test!{ $i using expr; $($rest)+ }
         )
-    }
-
-    parse_test!{hi using expr;
-        "$hello" => e(Expr::Var(s("hello")));
-        "4" => e(Expr::Prim(Primitive::Unit(4f64,s(""))));
     }
 
     parse_test!{test_css_keyval using css_keyval;
@@ -564,80 +570,60 @@ pub mod tests {
         assert_eq!(res, Err(()));
     }
 
-    #[test]
-    fn test_number() {
-
-        let nums : Vec<(&str,f64)> = vec![
-            ("-43.1", -43.1),
-            ("0.0", 0.0),
-            ("-0.0", 0.0),
-            ("100", 100.0),
-            ("99999.99999", 99999.99999)
-        ];
-
-        for (s,n) in nums {
-            let res = parse_only_str(|i| number(i), s);
-            assert_eq!(res, Ok(n));
-        }
+    parse_test!{test_number using number;
+        "-43.1" => -43.1;
+        "0.0" => 0.0;
+        "-0.0" => 0.0;
+        "100" => 100.0;
+        "99999.99999" => 99999.99999;
     }
 
-    #[test]
-    fn test_primitive_string() {
-
-        let strings : Vec<(&str,&str)> = vec![
-            (r#""hello""#, "hello"),
-            (r#""he\l\lo""#, "hello"),
-            (r#""he\\llo""#, r#"he\llo"#),
-            (r#"'he\\llo'"#, r#"he\llo"#),
-            (r#""""#, ""),
-            (r#""escaped \"lark\"""#, r#"escaped "lark""#),
-        ];
-
-        for (s,n) in strings {
-            let res = parse_only_str(|i| primitive_string(i), s);
-            assert_eq!(res, Ok( Primitive::Str(n.to_owned()) ) );
-        }
+    parse_test!{test_primitive_string using primitive_string;
+        r#""hello""# =>
+            Primitive::Str(s("hello"));
+        r#""he\l\lo""# =>
+            Primitive::Str(s("hello"));
+        r#""he\\llo""# =>
+            Primitive::Str(s(r#"he\llo"#));
+        r#"'he\\llo'"# =>
+            Primitive::Str(s(r#"he\llo"#));
+        r#""""# =>
+            Primitive::Str(s(""));
+        r#""escaped \"lark\"""# =>
+            Primitive::Str(s(r#"escaped "lark""#));
     }
 
-    #[test]
-    fn test_function_declaration_expr() {
-
-        let decls = vec![
-           ( "($apPl_3s, $b2ananA) => true"
-           , Expr::Func{ inputs: vec![s("apPl_3s"),s("b2ananA")], output: Box::new(e(Expr::Prim(Primitive::Bool(true)))) }) ,
-           ( "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse"
-           , Expr::Func{ inputs: vec![s("a"),s("b")], output: Box::new(e(Expr::Prim(Primitive::Bool(false)))) })
-        ];
-
-        for (s,n) in decls {
-            let res = parse_only_str(|i| function_declaration_expr(i), s).map(|e| e.expr);
-            assert_eq!(res, Ok(n));
-        }
+    parse_test!{test_function_declaration_expr using function_declaration_expr;
+        "($apPl_3s, $b2ananA) => true" =>
+            e(Expr::Func{
+                inputs: vec![s("apPl_3s"),s("b2ananA")],
+                output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+            });
+        "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
+            e(Expr::Func{
+                inputs: vec![s("a"),s("b")],
+                output: Box::new(e(Expr::Prim(Primitive::Bool(false))))
+            });
     }
 
-    #[test]
-    fn test_application_expr() {
-
-        let var = |st| Box::new(e(Expr::Var(s(st))));
-
-        let decls = vec![
-            ( "$hello(2px, true)"
-            , Expr::App{
+    parse_test!{test_application_expr using application_expr;
+        "$hello(2px, true)" =>
+            e(Expr::App{
                 expr: var("hello"),
                 args: vec![ e(Expr::Prim(Primitive::Unit(2.0,s("px")))), e(Expr::Prim(Primitive::Bool(true))) ]
-            }) ,
-            ( "!$hello"
-            , Expr::App{
+            });
+        "!$hello" =>
+            e(Expr::App{
                 expr: var("!"),
                 args: vec![ e(Expr::Var(s("hello"))) ]
-            }) ,
-            ( "!$hello()"
-            , Expr::App{
+            });
+        "!$hello()" =>
+            e(Expr::App{
                 expr: var("!"),
                 args: vec![ e(Expr::App{ expr: var("hello"), args: vec![] }) ]
-            }) ,
-            ( "!$hello($a)"
-            , Expr::App{
+            });
+        "!$hello($a)" =>
+            e(Expr::App{
                 expr: var("!"),
                 args: vec![
                     e(Expr::App{
@@ -645,104 +631,66 @@ pub mod tests {
                         args: vec![ e(Expr::Var(s("a"))) ]
                     })
                 ]
-            })
-        ];
-
-        for (s,n) in decls {
-            let res = parse_only_str(|i| application_expr(i), s);
-            assert_eq!(res, Ok(e(n)));
-        }
+            });
     }
 
-    #[test]
-    fn test_precedence() {
-
-        let same = vec![
-            ("1 + 2 + 3", "(1 + 2) + 3"),
-            ("1 + 2 * 3 + 4", "1 + (2 * 3) + 4"),
-            ("1 + 2 * 3 * 4 + 5", "1 + (2 * 3 * 4) + 5"),
-            ("1 + 2 * 3 * 4 + 5", "(1 + ((2 * 3) * 4)) + 5"),
-            ("1 * 2 / 3 * 4", "((1 * 2) / 3) * 4")
-        ];
-
-        let different = vec![
-            ("1 + 2 + 3", "1 + (2 + 3)")
-        ];
-
-        for (a,b) in same {
-            let res_a = parse_only_str(|i| expr(i), a);
-            let res_b = parse_only_str(|i| expr(i), b);
-            assert_eq!(res_a, res_b);
-        }
-
-        for (a,b) in different {
-            let res_a = parse_only_str(|i| expr(i), a);
-            let res_b = parse_only_str(|i| expr(i), b);
-            assert_ne!(res_a, res_b);
-        }
-
+    parse_test!{test_precedence using expr;
+        "1 + 2 + 3"         , "(1 + 2) + 3";
+        "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
+        "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
+        "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
+        "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
     }
 
-    #[test]
-    fn test_css_block() {
+    parse_test!{test_css_block using expr;
+        ".some-class:not(:last-child) {
 
-        let a = parse_only_str(|i| expr(i), "
-            .some-class:not(:last-child) {
+            $hello: ($a, $b) => $a + $b;
+            $another: 2;
 
-                $hello: ($a, $b) => $a + $b;
-                $another: 2;
+            $lark: {
+                $sub1: 2px;
+            };
 
-                $lark: {
-                    $sub1: 2px;
-                };
-
-                $hello(2px, 5px);
+            $hello(2px, 5px);
+            {
+                border: 1px solid black;
                 {
-                    border: 1px solid black;
-                    {
-                        lark: another thing hereee;
-                    }
+                    lark: another thing hereee;
                 }
-
-                if true then $hello else $bye;
-
-                & .a-sub-class .more.another,
-                .sub-clas-two {
-                    $subThing: -2px + 4px;
-                    color: red;
-                }
-
-                -moz-background-color:
-                                1px solid blue;
-                border-radius: 10px;
-
-                $more: $lark.$sub1;
             }
-        ");
 
-        let b = parse_only_str(|i| expr(i), "
-            .some-class:not(:last-child) {
+            if true then $hello else $bye;
 
-                $hello: ($a, $b) => $a + $b;
-                $another: 2;
-                $lark: { $sub1: 2px; };
-                $more: $lark.$sub1;
-
-                $hello(2px, 5px);
-                { border: 1px solid black; { lark: another thing hereee; }}
-                if true then $hello else $bye;
-
-                & .a-sub-class .more.another,
-                .sub-clas-two { color: red; $subThing: -2px + 4px; }
-                -moz-background-color: 1px solid blue;
-                border-radius: 10px;
+            & .a-sub-class .more.another,
+            .sub-clas-two {
+                $subThing: -2px + 4px;
+                color: red;
             }
-        ");
 
-        assert!(a.is_ok(), "Expecting valid Exprs to be parsed (a)");
-        assert!(b.is_ok(), "Expecting valid Exprs to be parsed (b)");
-        assert_eq!(a, b);
+            -moz-background-color:
+                            1px solid blue;
+            border-radius: 10px;
 
+            $more: $lark.$sub1;
+        }"
+        ,
+        ".some-class:not(:last-child) {
+
+            $hello: ($a, $b) => $a + $b;
+            $another: 2;
+            $lark: { $sub1: 2px; };
+            $more: $lark.$sub1;
+
+            $hello(2px, 5px);
+            { border: 1px solid black; { lark: another thing hereee; }}
+            if true then $hello else $bye;
+
+            & .a-sub-class .more.another,
+            .sub-clas-two { color: red; $subThing: -2px + 4px; }
+            -moz-background-color: 1px solid blue;
+            border-radius: 10px;
+        }";
     }
 
 }
