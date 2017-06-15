@@ -3,6 +3,7 @@
 
 mod parser;
 mod types;
+mod evaluator;
 
 fn main() {
 

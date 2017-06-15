@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use chomp::types::numbering::Numbering;
 use chomp::types::Buffer;
 
+//re-export this:
+pub use chomp::types::numbering::InputPosition;
+
 /// Primitive values:
 #[derive(PartialEq,Debug,Clone)]
 pub enum Primitive {
@@ -59,6 +62,7 @@ pub struct Position {
     pub line: u64,
     pub col: u64
 }
+
 impl Position {
     pub fn new() -> Position {
         Position{line: 0, col: 0}
@@ -69,6 +73,10 @@ impl Default for Position {
         Position::new()
     }
 }
+
+/// by implementing chomp's numbering trait for our Position struct,
+/// we can use it inside an InputPosition struct to magically endow our
+/// inputs with valid positional information.
 impl Numbering for Position {
     type Token = char;
 
