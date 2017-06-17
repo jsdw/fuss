@@ -1,4 +1,5 @@
 use types::{Expression,InputPosition,Position};
+use std::collections::HashMap;
 use chomp;
 use parser;
 
@@ -12,6 +13,21 @@ pub enum ErrorType {
     ParseError(parser::Error)
 }
 
+struct Scope(Vec<HashMap<String,Expression>>);
+impl Scope {
+    fn new() -> Self {
+        Scope(vec![HashMap::new()])
+    }
+    fn find<'a>(&'a self, name: &str) -> Option<&'a Expression> {
+        for map in self.0.iter().rev() {
+            if let Some(expr) = map.get(name) {
+                return Some(expr)
+            }
+        }
+        None
+    }
+}
+
 fn eval_str(text: &str, name: &str) -> Res {
 
     let pos = Position::new();
@@ -19,7 +35,7 @@ fn eval_str(text: &str, name: &str) -> Res {
     let (rest, res) = chomp::run_parser(input, parser::parse);
 
     match res {
-        Ok(expr) => simplify(expr),
+        Ok(expr) => simplify(expr, Scope::new()),
         Err(err) => Err(Error{
             ty: ErrorType::ParseError(err),
             file: name.to_owned(),
@@ -29,7 +45,10 @@ fn eval_str(text: &str, name: &str) -> Res {
 
 }
 
-fn simplify(expr: Expression) -> Res {
+fn simplify(expr: Expression, scopes: Scope) -> Res {
+
+
+
     unimplemented!();
 }
 
