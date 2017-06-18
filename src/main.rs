@@ -4,6 +4,7 @@
 mod parser;
 mod types;
 mod evaluator;
+mod list;
 
 fn main() {
 
