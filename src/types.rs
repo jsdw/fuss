@@ -60,7 +60,10 @@ pub enum Expr {
     /// Applying args to something (calling a function)
     App{ expr: Box<Expression>, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
-    Block(Block)
+    Block(Block),
+    /// A simplified version of CSS: we don't have to parse direct to this,
+    /// instead we can simplify Block into it later on.
+    NestedSimpleBlock(NestedSimpleBlock)
 }
 
 /// An Expr paired with the start and end position

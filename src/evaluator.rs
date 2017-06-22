@@ -80,6 +80,9 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// We don't need to simplify primitives; they don't get any simpler!
         Prim(_) => Ok(e),
 
+        /// This is our target output, so we can't simplify it further
+        NestedSimpleBlock(_) => Ok(e),
+
         /// Variables, if found in scope, are already simplified, so just complain
         /// if they don't exist.
         Var(ref name) => scope.find(name).map_or(
@@ -132,14 +135,15 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
             simplify(*func_e.clone(), scope.push(function_scope))
 
-        }
+        },
 
         /// For Blocks, we simplify the CSSEntry Expressions in the context of
         /// the block scope, and complain if they do not themselves resolve to blocks.
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
         Block(block) => {
             unimplemented!()
-        }
+        },
+
 
     }
 
