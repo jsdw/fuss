@@ -30,6 +30,22 @@ pub struct Block {
     pub css: Vec<CSSEntry>
 }
 
+/// a simplified version of the above. Nothing is parsed into this type,
+/// but it is used as a simplification of Block to prevent some simplification
+/// errors.
+#[derive(PartialEq,Debug,Clone)]
+pub struct NestedSimpleBlock {
+    pub selector: String,
+    pub css: Vec<NestedCSSEntry>
+}
+
+#[derive(PartialEq,Debug,Clone)]
+pub enum NestedCSSEntry {
+    KeyVal{ key: String, val: String},
+    Block(Box<NestedSimpleBlock>)
+}
+
+
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
