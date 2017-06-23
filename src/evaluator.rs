@@ -1,4 +1,4 @@
-use types::{Expression,InputPosition,Position};
+use types::{Expression,Expr,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
 use std::collections::HashMap;
 use list::List;
 use std::borrow::Cow;
@@ -16,7 +16,8 @@ pub enum ErrorType {
     ParseError(parser::Error),
     CantFindVariable(String),
     NotAFunction,
-    WrongNumberOfArguments{expected: usize, got: usize}
+    WrongNumberOfArguments{expected: usize, got: usize},
+    NotACSSBlock
 }
 
 #[derive(Clone,Debug)]
@@ -66,40 +67,55 @@ fn eval_str(text: &str, name: &str) -> Res {
 
 }
 
+/// generate an Err from an Expression and an ErrorType. This is a macro
+/// so that it can pluck out only what it needs from the struct, rather than
+/// trying to move the whole thing
+macro_rules! err {
+    ($e:ident, $err:expr) => ({
+        let start = $e.start;
+        let end = $e.end;
+        Err(Error{
+            ty: $err,
+            file: String::new(),
+            start: start,
+            end: end
+        })
+    })
+}
+
 fn simplify(e: Expression, scope: Scope) -> Res {
 
-    use types::Expr::*;
     use types::Primitive::*;
     use self::ErrorType::*;
 
     match e.expr {
 
         /// Func declarations can't simplify, so leave as is
-        Func{..} => Ok(e),
+        Expr::Func{..} => Ok(e),
 
         /// We don't need to simplify primitives; they don't get any simpler!
-        Prim(_) => Ok(e),
+        Expr::Prim(_) => Ok(e),
 
         /// This is our target output, so we can't simplify it further
-        NestedSimpleBlock(_) => Ok(e),
+        Expr::NestedSimpleBlock(_) => Ok(e),
 
         /// Variables, if found in scope, are already simplified, so just complain
         /// if they don't exist.
-        Var(ref name) => scope.find(name).map_or(
-            Err(e.err(CantFindVariable(name.to_owned()))),
+        Expr::Var(name) => scope.find(&name).map_or(
+            err!(e,CantFindVariable(name)),
             |var| Ok(var.clone())
         ),
 
         /// If simplifies based on the boolean-ness of the condition!
-        If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
+        Expr::If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
 
             let cond = simplify(*boxed_cond, scope.clone())?;
 
             let is_true = match cond.expr {
-                Prim(Str(s)) => s.len() > 0,
-                Prim(Bool(b)) => b,
-                Prim(Unit(n,_)) => n != ::std::f64::NAN && n != 0f64,
-                Func{..} => true,
+                Expr::Prim(Str(s)) => s.len() > 0,
+                Expr::Prim(Bool(b)) => b,
+                Expr::Prim(Unit(n,_)) => n != ::std::f64::NAN && n != 0f64,
+                Expr::Func{..} => true,
                 _ => false
             };
 
@@ -112,52 +128,68 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
         /// Function applications lead to a new scope being created to stick the
         /// function inputs into, and then simplifying the body against that.
-        App{ expr: ref boxed_expr, args: ref args } => {
+        Expr::App{ expr: boxed_expr, args } => {
 
-            let func = simplify(*boxed_expr.clone(), scope.clone())?;
+            let func = simplify(*boxed_expr, scope.clone())?;
 
             let (arg_names, func_e) = match func.expr {
-                Func{ inputs: arg_names, output: func_e} => Ok( (arg_names, func_e) ),
-                _ => Err(func.err(NotAFunction))
+                Expr::Func{ inputs: arg_names, output: func_e} => Ok( (arg_names, func_e) ),
+                _ => err!(func, NotAFunction)
             }?;
 
             if arg_names.len() != args.len() {
-                return Err(e.err(WrongNumberOfArguments{
+                return err!(e,WrongNumberOfArguments{
                     expected: arg_names.len(),
                     got: args.len()
-                }));
+                });
             }
 
             let mut function_scope = HashMap::new();
             for (name, expr) in arg_names.into_iter().zip(args) {
-                function_scope.insert(name, expr.clone());
+                function_scope.insert(name, expr);
             }
 
-            simplify(*func_e.clone(), scope.push(function_scope))
+            simplify(*func_e, scope.push(function_scope))
 
         },
 
         /// For Blocks, we simplify the CSSEntry Expressions in the context of
         /// the block scope, and complain if they do not themselves resolve to blocks.
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
-        Block(block) => {
-            unimplemented!()
+        Expr::Block(block) => {
+
+            let new_scope = scope.push(block.scope);
+            let mut blocks = vec![];
+            for val in block.css {
+                match val {
+                    CSSEntry::Expr(expr) => {
+                        let css_expr = simplify(expr, new_scope.clone())?;
+                        let block = match css_expr.expr {
+                            Expr::NestedSimpleBlock(block) => block,
+                            _ => return err!(css_expr, NotACSSBlock)
+                        };
+                        blocks.push( NestedCSSEntry::Block(Box::new(block)) );
+                    },
+                    CSSEntry::KeyVal{ key, val } => {
+                        blocks.push( NestedCSSEntry::KeyVal{ key:key, val:val } );
+                    }
+                }
+            }
+
+            Ok(Expression{
+                start: e.start,
+                end: e.end,
+                expr: Expr::NestedSimpleBlock(NestedSimpleBlock{
+                    selector: block.selector,
+                    css: blocks
+                })
+            })
+
         },
 
 
     }
 
-}
-
-impl Expression {
-    fn err(&self, e:ErrorType) -> Error {
-        Error{
-            ty: e,
-            file: String::new(),
-            start: self.start,
-            end: self.end
-        }
-    }
 }
 
 #[cfg(test)]
