@@ -90,8 +90,37 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
     match e.expr {
 
-        /// Func declarations can't simplify, so leave as is
-        Expr::Func{..} => Ok(e),
+        /// Func declarations: we need to substitute any variables declared within
+        /// (with the exception of those coming in through the args) with expressions
+        /// on scope at present.
+        Expr::Func{ inputs, output } => {
+
+            use std::collections::hash_set::{HashSet};
+
+            // make a scope wherein the function args are preserved as variables,
+            // so that simplifyin only replaces other stuff.
+            let mut inputVars = HashMap::new();
+            for arg in inputs.iter() {
+                let var = Expression{
+                    start: e.start,
+                    end: e.end,
+                    expr: Expr::Var(arg.clone())
+                };
+                inputVars.insert(arg.clone(), var);
+            }
+
+            let simplified_output = simplify(*output, scope.push(inputVars))?;
+
+            Ok(Expression{
+                start: e.start,
+                end: e.end,
+                expr: Expr::Func{
+                    inputs: inputs,
+                    output: Box::new(simplified_output)
+                }
+            })
+
+        },
 
         /// We don't need to simplify primitives; they don't get any simpler!
         Expr::Prim(_) => Ok(e),
@@ -99,8 +128,10 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// This is our target output, so we can't simplify it further
         Expr::NestedSimpleBlock(_) => Ok(e),
 
-        /// Variables, if found in scope, are already simplified, so just complain
-        /// if they don't exist.
+        /// Variables: replace these with the Expresssion on scope that the
+        /// variable points to. Assume anything on scope is already simplified
+        /// as much as needed (this is important for Funcs, which use a scope
+        /// of vars to avoid replacing the func arg uses with other expressions)
         Expr::Var(name) => scope.find(&name).map_or(
             err!(e,CantFindVariable(name)),
             |var| Ok(var.clone())
