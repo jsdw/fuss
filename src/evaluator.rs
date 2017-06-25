@@ -83,6 +83,16 @@ macro_rules! err {
     })
 }
 
+macro_rules! expression_from {
+    ($e:ident, $expr:expr) => (
+        Expression{
+            start: $e.start,
+            end: $e.end,
+            expr: $expr
+        }
+    )
+}
+
 fn simplify(e: Expression, scope: Scope) -> Res {
 
     use types::Primitive::*;
@@ -111,10 +121,8 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
             let simplified_output = simplify(*output, scope.push(inputVars))?;
 
-            Ok(Expression{
-                start: e.start,
-                end: e.end,
-                expr: Expr::Func{
+            Ok(expression_from!{e, 
+                Expr::Func{
                     inputs: inputs,
                     output: Box::new(simplified_output)
                 }
@@ -162,7 +170,6 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         Expr::App{ expr: boxed_expr, args } => {
 
             let func = simplify(*boxed_expr, scope.clone())?;
-
             let (arg_names, func_e) = match func.expr {
                 Expr::Func{ inputs: arg_names, output: func_e} => Ok( (arg_names, func_e) ),
                 _ => err!(func, NotAFunction)
@@ -176,8 +183,35 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             }
 
             let mut function_scope = HashMap::new();
-            for (name, expr) in arg_names.into_iter().zip(args) {
-                function_scope.insert(name, expr);
+            let mut couldnt_simplify_all = false;
+
+            let mut simplified_args = vec![];
+            for arg in args.into_iter() {
+
+                let simplified_arg = simplify(arg, scope.clone())?;
+
+                // simplify didn't fail, but the arg is still a variable,
+                // which means we are simplifying inside a Func, and this
+                // is a variable that doesn't yet have a known value. this
+                // meamns we can't yet simplify further.
+                if let Expr::Var(_) = simplified_arg.expr {
+                    couldnt_simplify_all = true; 
+                }
+                simplified_args.push(simplified_arg);
+
+            }
+
+            // simplifying not good enough, so reconstruct and return; at least
+            // we'll have potentially done some work simplifing in this pass.
+            if couldnt_simplify_all {
+                return Ok(expression_from!{e,
+                    Expr::App{
+                        expr: Box::new(expression_from!{func,
+                            Expr::Func{ inputs:arg_names, output:func_e }
+                        }),
+                        args: simplified_args
+                    }
+                });
             }
 
             simplify(*func_e, scope.push(function_scope))
@@ -189,7 +223,19 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
         Expr::Block(block) => {
 
-            let new_scope = scope.push(block.scope);
+            // simplify things in the block scope against a scope including the unsimplified
+            // versions of themselves. 
+            // @TODO: Prevent infinite loops from being possible here, and make more efficient
+            //        since at the mo, we'll potentially be simplifying the same var several
+            //        times if it appears in several places.
+            let block_scope = scope.push(block.scope.clone());
+            let mut simplified_block_scope = HashMap::new();
+            for (name,expr) in block.scope {
+                let simplified_expr = simplify(expr,block_scope.clone())?;
+                simplified_block_scope.insert(name, simplified_expr);
+            }
+
+            let new_scope = scope.push(simplified_block_scope);
             let mut blocks = vec![];
             for val in block.css {
                 match val {
@@ -207,10 +253,8 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 }
             }
 
-            Ok(Expression{
-                start: e.start,
-                end: e.end,
-                expr: Expr::NestedSimpleBlock(NestedSimpleBlock{
+            Ok(expression_from!{e,
+                Expr::NestedSimpleBlock(NestedSimpleBlock{
                     selector: block.selector,
                     css: blocks
                 })
