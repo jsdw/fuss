@@ -1,7 +1,6 @@
 use types::{Expression,Expr,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
 use std::collections::HashMap;
 use list::List;
-use std::borrow::Cow;
 use chomp;
 use parser;
 
@@ -105,21 +104,19 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// on scope at present.
         Expr::Func{ inputs, output } => {
 
-            use std::collections::hash_set::{HashSet};
-
             // make a scope wherein the function args are preserved as variables,
             // so that simplifyin only replaces other stuff.
-            let mut inputVars = HashMap::new();
+            let mut input_vars = HashMap::new();
             for arg in inputs.iter() {
                 let var = Expression{
                     start: e.start,
                     end: e.end,
                     expr: Expr::Var(arg.clone())
                 };
-                inputVars.insert(arg.clone(), var);
+                input_vars.insert(arg.clone(), var);
             }
 
-            let simplified_output = simplify(*output, scope.push(inputVars))?;
+            let simplified_output = simplify(*output, scope.push(input_vars))?;
 
             Ok(expression_from!{e, 
                 Expr::Func{
@@ -182,9 +179,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 });
             }
 
-            let mut function_scope = HashMap::new();
             let mut couldnt_simplify_all = false;
-
             let mut simplified_args = vec![];
             for arg in args.into_iter() {
 
@@ -212,6 +207,12 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                         args: simplified_args
                     }
                 });
+            }
+
+            // create scope containing simplified args to make use of in function body expr:
+            let mut function_scope = HashMap::new();            
+            for (name, arg) in arg_names.into_iter().zip(simplified_args) {
+                function_scope.insert(name,arg);
             }
 
             simplify(*func_e, scope.push(function_scope))
