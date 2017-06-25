@@ -10,7 +10,10 @@ pub use chomp::types::numbering::InputPosition;
 pub enum Primitive {
     Str(String),
     Bool(bool),
-    Unit(f64, String)
+    Unit(f64, String),
+    // This comes up when simplifying if we try to
+    // simply an expression defined in terms of itself somehow:
+    RecursiveValue
 }
 
 /// The possible things that can crop up in a CSS block

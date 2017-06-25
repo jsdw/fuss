@@ -1,4 +1,4 @@
-use types::{Expression,Expr,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
+use types::{Expression,Expr,Primitive,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
 use std::collections::HashMap;
 use list::List;
 use chomp;
@@ -16,7 +16,8 @@ pub enum ErrorType {
     CantFindVariable(String),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
-    NotACSSBlock
+    NotACSSBlock,
+    LoopDetected
 }
 
 #[derive(Clone,Debug)]
@@ -42,6 +43,12 @@ impl Scope {
     /// leaving the original unchanged:
     fn push(&self, values: HashMap<String,Expression>) -> Scope {
         Scope(self.0.push(values))
+    }
+
+    fn push_one(&self, key: String, value: Expression) -> Scope {
+        let mut map = HashMap::with_capacity(1);
+        map.insert(key, value);
+        self.push(map)
     }
 }
 
@@ -99,6 +106,51 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
     match e.expr {
 
+        /// We don't need to simplify primitives; they don't get any simpler!
+        Expr::Prim(_) => Ok(e),
+
+        /// This is our target output, so we can't simplify it further
+        Expr::NestedSimpleBlock(_) => Ok(e),
+
+        /// Variables: replace these with the Expresssion on scope that the
+        /// variable points to. Assume anything on scope is already simplified
+        /// as much as needed (this is important for Funcs, which use a scope
+        /// of vars to avoid replacing the func arg uses with other expressions)
+        Expr::Var(name) => { 
+            scope.find(&name).map_or(
+                err!(e,CantFindVariable(name)),
+                |var| {
+                    // We found a var but it is a RecursiveValue, meaning we are trying
+                    // to define a value in terms of itself.
+                    if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
+                        err!(var, LoopDetected)
+                    } else {
+                        Ok(var.clone())
+                    }
+                }
+            )
+        },
+
+        /// If simplifies based on the boolean-ness of the condition!
+        Expr::If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
+
+            let cond = simplify(*boxed_cond, scope.clone())?;
+
+            let is_true = match cond.expr {
+                Expr::Prim(Str(s)) => s.len() > 0,
+                Expr::Prim(Bool(b)) => b,
+                Expr::Prim(Unit(n,_)) => n != ::std::f64::NAN && n != 0f64,
+                Expr::Func{..} => true,
+                _ => false
+            };
+
+            if is_true {
+                simplify(*boxed_then, scope)
+            } else {
+                simplify(*boxed_else, scope)
+            }
+        },
+
         /// Func declarations: we need to substitute any variables declared within
         /// (with the exception of those coming in through the args) with expressions
         /// on scope at present.
@@ -125,41 +177,6 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 }
             })
 
-        },
-
-        /// We don't need to simplify primitives; they don't get any simpler!
-        Expr::Prim(_) => Ok(e),
-
-        /// This is our target output, so we can't simplify it further
-        Expr::NestedSimpleBlock(_) => Ok(e),
-
-        /// Variables: replace these with the Expresssion on scope that the
-        /// variable points to. Assume anything on scope is already simplified
-        /// as much as needed (this is important for Funcs, which use a scope
-        /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(name) => scope.find(&name).map_or(
-            err!(e,CantFindVariable(name)),
-            |var| Ok(var.clone())
-        ),
-
-        /// If simplifies based on the boolean-ness of the condition!
-        Expr::If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
-
-            let cond = simplify(*boxed_cond, scope.clone())?;
-
-            let is_true = match cond.expr {
-                Expr::Prim(Str(s)) => s.len() > 0,
-                Expr::Prim(Bool(b)) => b,
-                Expr::Prim(Unit(n,_)) => n != ::std::f64::NAN && n != 0f64,
-                Expr::Func{..} => true,
-                _ => false
-            };
-
-            if is_true {
-                simplify(*boxed_then, scope)
-            } else {
-                simplify(*boxed_else, scope)
-            }
         },
 
         /// Function applications lead to a new scope being created to stick the
@@ -225,14 +242,18 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         Expr::Block(block) => {
 
             // simplify things in the block scope against a scope including the unsimplified
-            // versions of themselves. 
-            // @TODO: Prevent infinite loops from being possible here, and make more efficient
-            //        since at the mo, we'll potentially be simplifying the same var several
-            //        times if it appears in several places.
+            // versions of themselves. This allows variables to reference other variables defined here.
+            //
+            // For each variable we try and simplify, we push onto the
+            // scope a RecursiveValue marker for that variable, so that if at any point while
+            // simplifying the expression bound to the variable, we encounter that same variable,
+            // an error is thrown. This prevents self referential expressions.
+            //
             let block_scope = scope.push(block.scope.clone());
             let mut simplified_block_scope = HashMap::new();
             for (name,expr) in block.scope {
-                let simplified_expr = simplify(expr,block_scope.clone())?;
+                let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
+                let simplified_expr = simplify(expr,s)?;
                 simplified_block_scope.insert(name, simplified_expr);
             }
 
