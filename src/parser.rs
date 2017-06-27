@@ -287,12 +287,13 @@ fn if_then_else_expr<I: Chars>(i: I) -> Output<I,Expression> {
 fn variable_name_expr<I: Chars>(i: I) -> Output<I,Expression> {
     parse!{i;
         let start_pos = pos();
-        let var = variable_string();
+        token(VAR_PREFIX);
+        let var_accessor = sep_by1(raw_variable_string, |s| token(s,'.'));
         let end_pos = pos();
         ret Expression{
             start:start_pos,
             end:end_pos,
-            expr:Expr::Var(var)
+            expr:Expr::Var(var_accessor)
         }
     }
 }
@@ -386,7 +387,7 @@ fn unary_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
                 expr: Box::new(Expression{
                     start:start_pos,
                     end:end_pos_tok,
-                    expr:Expr::Var(tok.to_string())
+                    expr:Expr::Var(vec![tok.to_string()])
                 }),
                 args: vec![arg]
             }
@@ -456,7 +457,7 @@ fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
                     expr: Box::new(Expression{
                         start: op_start,
                         end: op_end,
-                        expr: Expr::Var(op)
+                        expr: Expr::Var(vec![op])
                     }),
                     args: vec![ first_arg, second_arg ]
                 }
@@ -489,7 +490,7 @@ fn get_operator_precedence(op: &str) -> usize {
 }
 
 fn application_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i; infix_application_expr() <|> prefix_application_expr() <|> unary_application_expr() }
+    parse!{i; infix_application_expr() } // this covers other applications
 }
 
 #[cfg(test)]
@@ -506,7 +507,7 @@ pub mod tests {
     }
 
     fn var(name: &str) -> Box<Expression> {
-        Box::new(e(Expr::Var(s(name))))
+        Box::new(e(Expr::Var(vec![s(name)])))
     }
 
     // parses the inner part of the macro; this can determine what
@@ -602,7 +603,7 @@ pub mod tests {
         "!$hello" =>
             e(Expr::App{
                 expr: var("!"),
-                args: vec![ e(Expr::Var(s("hello"))) ]
+                args: vec![ e(Expr::Var(vec![s("hello")])) ]
             });
         "!$hello()" =>
             e(Expr::App{
@@ -615,7 +616,7 @@ pub mod tests {
                 args: vec![
                     e(Expr::App{
                         expr: var("hello"),
-                        args: vec![ e(Expr::Var(s("a"))) ]
+                        args: vec![ e(Expr::Var(vec![s("a")])) ]
                     })
                 ]
             });
@@ -627,6 +628,8 @@ pub mod tests {
         "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
         "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
         "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
+        "-1+2 + 3"          , "(-1) + 2 + 3";
+        "1 + -2 +3"         , "1 + (-2) + 3";
     }
 
     parse_test!{test_css_block using expr;

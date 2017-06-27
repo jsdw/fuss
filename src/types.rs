@@ -35,6 +35,7 @@ pub struct Block {
 /// errors.
 #[derive(PartialEq,Debug,Clone)]
 pub struct NestedSimpleBlock {
+    pub scope: HashMap<String,Expression>,
     pub selector: String,
     pub css: Vec<NestedCSSEntry>
 }
@@ -55,8 +56,8 @@ pub enum Expr {
     If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
     /// A function eg ($a, $b) => $a + $b
     Func{ inputs: Vec<String>, output: Box<Expression> },
-    /// A variable name
-    Var(String),
+    /// A variable name or accessed variable eg $hello or $hello.there.thing
+    Var(String, Vec<String>),
     /// Applying args to something (calling a function)
     App{ expr: Box<Expression>, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
