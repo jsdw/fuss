@@ -60,7 +60,7 @@ pub enum Expr {
     /// A function eg ($a, $b) => $a + $b
     Func{ inputs: Vec<String>, output: Box<Expression> },
     /// A variable name or accessed variable eg $hello or $hello.there.thing
-    Var(String, Vec<String>),
+    Var(Vec<String>),
     /// Applying args to something (calling a function)
     App{ expr: Box<Expression>, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }

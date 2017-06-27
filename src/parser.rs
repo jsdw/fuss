@@ -620,6 +620,37 @@ pub mod tests {
                     })
                 ]
             });
+        "$hello.there($a)" =>
+            e(Expr::App{
+                expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
+                args: vec![ e(Expr::Var(vec![s("a")])) ]
+            });
+        "!$hello.there($a)" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![
+                    e(Expr::App{
+                        expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
+                        args: vec![ e(Expr::Var(vec![s("a")])) ]
+                    })
+                ]
+            });
+        "!$hello.there($a) + 2px" =>
+            e(Expr::App{
+                expr: var("+"),
+                args: vec![
+                    e(Expr::App{
+                        expr: var("!"),
+                        args: vec![
+                            e(Expr::App{
+                                expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
+                                args: vec![ e(Expr::Var(vec![s("a")])) ]
+                            })
+                        ]
+                    }),
+                    e(Expr::Prim(Primitive::Unit(2.0,s("px"))))
+                ]
+            });
     }
 
     parse_test!{test_precedence using expr;

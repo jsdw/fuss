@@ -17,7 +17,8 @@ pub enum ErrorType {
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
     NotACSSBlock,
-    LoopDetected
+    LoopDetected,
+    PropertyDoesNotExist(Vec<String>,String)
 }
 
 #[derive(Clone,Debug)]
@@ -116,19 +117,46 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
         /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(name) => { 
-            scope.find(&name).map_or(
-                err!(e,CantFindVariable(name)),
-                |var| {
-                    // We found a var but it is a RecursiveValue, meaning we are trying
-                    // to define a value in terms of itself.
-                    if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
-                        err!(var, LoopDetected)
-                    } else {
-                        Ok(var.clone())
+        Expr::Var(name) => {
+
+            if let Some( (first,rest) ) = name.split_first() {
+
+                // locate the initial variable on scope somewhere:
+                let mut var = scope.find(first).map_or(
+                    err!(e,CantFindVariable(first.clone())),
+                    |var| {
+                        // We found a var but it is a RecursiveValue, meaning we are trying
+                        // to define a value in terms of itself.
+                        if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
+                            err!(var, LoopDetected)
+                        } else {
+                            Ok(var)
+                        }
+                    }
+                )?;
+
+                // if asked to, try and dig into the variable, failing
+                // as soon as we don't have a scope to dig into any more.
+                for key in rest {
+                    if let Expr::NestedSimpleBlock(ref block) = var.expr {
+                        match block.scope.get(key) {
+                            Some(val) => {
+                                var = val;
+                            },
+                            None => {
+                                return err!(e, PropertyDoesNotExist(name.clone(), key.clone()));
+                            }
+                        }
                     }
                 }
-            )
+
+                // if we have found something from our digging, copy and return it:
+                Ok(var.clone())
+
+            } else {
+                err!(e, CantFindVariable("".to_owned()))
+            }
+
         },
 
         /// If simplifies based on the boolean-ness of the condition!
@@ -163,14 +191,14 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 let var = Expression{
                     start: e.start,
                     end: e.end,
-                    expr: Expr::Var(arg.clone())
+                    expr: Expr::Var(vec![arg.clone()])
                 };
                 input_vars.insert(arg.clone(), var);
             }
 
             let simplified_output = simplify(*output, scope.push(input_vars))?;
 
-            Ok(expression_from!{e, 
+            Ok(expression_from!{e,
                 Expr::Func{
                     inputs: inputs,
                     output: Box::new(simplified_output)
@@ -207,7 +235,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 // is a variable that doesn't yet have a known value. this
                 // meamns we can't yet simplify further.
                 if let Expr::Var(_) = simplified_arg.expr {
-                    couldnt_simplify_all = true; 
+                    couldnt_simplify_all = true;
                 }
                 simplified_args.push(simplified_arg);
 
@@ -227,7 +255,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             }
 
             // create scope containing simplified args to make use of in function body expr:
-            let mut function_scope = HashMap::new();            
+            let mut function_scope = HashMap::new();
             for (name, arg) in arg_names.into_iter().zip(simplified_args) {
                 function_scope.insert(name,arg);
             }
@@ -257,7 +285,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 simplified_block_scope.insert(name, simplified_expr);
             }
 
-            let new_scope = scope.push(simplified_block_scope);
+            let new_scope = scope.push(simplified_block_scope.clone());
             let mut blocks = vec![];
             for val in block.css {
                 match val {
@@ -277,6 +305,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
             Ok(expression_from!{e,
                 Expr::NestedSimpleBlock(NestedSimpleBlock{
+                    scope: simplified_block_scope,
                     selector: block.selector,
                     css: blocks
                 })
