@@ -1,7 +1,6 @@
-use types::{Expression,Expr,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
+use types::{Expression,Expr,Primitive,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
 use std::collections::HashMap;
 use list::List;
-use std::borrow::Cow;
 use chomp;
 use parser;
 
@@ -17,7 +16,8 @@ pub enum ErrorType {
     CantFindVariable(String),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
-    NotACSSBlock
+    NotACSSBlock,
+    LoopDetected
 }
 
 #[derive(Clone,Debug)]
@@ -43,6 +43,12 @@ impl Scope {
     /// leaving the original unchanged:
     fn push(&self, values: HashMap<String,Expression>) -> Scope {
         Scope(self.0.push(values))
+    }
+
+    fn push_one(&self, key: String, value: Expression) -> Scope {
+        let mut map = HashMap::with_capacity(1);
+        map.insert(key, value);
+        self.push(map)
     }
 }
 
@@ -83,44 +89,22 @@ macro_rules! err {
     })
 }
 
+macro_rules! expression_from {
+    ($e:ident, $expr:expr) => (
+        Expression{
+            start: $e.start,
+            end: $e.end,
+            expr: $expr
+        }
+    )
+}
+
 fn simplify(e: Expression, scope: Scope) -> Res {
 
     use types::Primitive::*;
     use self::ErrorType::*;
 
     match e.expr {
-
-        /// Func declarations: we need to substitute any variables declared within
-        /// (with the exception of those coming in through the args) with expressions
-        /// on scope at present.
-        Expr::Func{ inputs, output } => {
-
-            use std::collections::hash_set::{HashSet};
-
-            // make a scope wherein the function args are preserved as variables,
-            // so that simplifyin only replaces other stuff.
-            let mut inputVars = HashMap::new();
-            for arg in inputs.iter() {
-                let var = Expression{
-                    start: e.start,
-                    end: e.end,
-                    expr: Expr::Var(arg.clone())
-                };
-                inputVars.insert(arg.clone(), var);
-            }
-
-            let simplified_output = simplify(*output, scope.push(inputVars))?;
-
-            Ok(Expression{
-                start: e.start,
-                end: e.end,
-                expr: Expr::Func{
-                    inputs: inputs,
-                    output: Box::new(simplified_output)
-                }
-            })
-
-        },
 
         /// We don't need to simplify primitives; they don't get any simpler!
         Expr::Prim(_) => Ok(e),
@@ -132,10 +116,20 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
         /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(name) => scope.find(&name).map_or(
-            err!(e,CantFindVariable(name)),
-            |var| Ok(var.clone())
-        ),
+        Expr::Var(name) => { 
+            scope.find(&name).map_or(
+                err!(e,CantFindVariable(name)),
+                |var| {
+                    // We found a var but it is a RecursiveValue, meaning we are trying
+                    // to define a value in terms of itself.
+                    if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
+                        err!(var, LoopDetected)
+                    } else {
+                        Ok(var.clone())
+                    }
+                }
+            )
+        },
 
         /// If simplifies based on the boolean-ness of the condition!
         Expr::If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
@@ -157,12 +151,39 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             }
         },
 
+        /// Func declarations: we need to substitute any variables declared within
+        /// (with the exception of those coming in through the args) with expressions
+        /// on scope at present.
+        Expr::Func{ inputs, output } => {
+
+            // make a scope wherein the function args are preserved as variables,
+            // so that simplifyin only replaces other stuff.
+            let mut input_vars = HashMap::new();
+            for arg in inputs.iter() {
+                let var = Expression{
+                    start: e.start,
+                    end: e.end,
+                    expr: Expr::Var(arg.clone())
+                };
+                input_vars.insert(arg.clone(), var);
+            }
+
+            let simplified_output = simplify(*output, scope.push(input_vars))?;
+
+            Ok(expression_from!{e, 
+                Expr::Func{
+                    inputs: inputs,
+                    output: Box::new(simplified_output)
+                }
+            })
+
+        },
+
         /// Function applications lead to a new scope being created to stick the
         /// function inputs into, and then simplifying the body against that.
         Expr::App{ expr: boxed_expr, args } => {
 
             let func = simplify(*boxed_expr, scope.clone())?;
-
             let (arg_names, func_e) = match func.expr {
                 Expr::Func{ inputs: arg_names, output: func_e} => Ok( (arg_names, func_e) ),
                 _ => err!(func, NotAFunction)
@@ -175,9 +196,40 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 });
             }
 
-            let mut function_scope = HashMap::new();
-            for (name, expr) in arg_names.into_iter().zip(args) {
-                function_scope.insert(name, expr);
+            let mut couldnt_simplify_all = false;
+            let mut simplified_args = vec![];
+            for arg in args.into_iter() {
+
+                let simplified_arg = simplify(arg, scope.clone())?;
+
+                // simplify didn't fail, but the arg is still a variable,
+                // which means we are simplifying inside a Func, and this
+                // is a variable that doesn't yet have a known value. this
+                // meamns we can't yet simplify further.
+                if let Expr::Var(_) = simplified_arg.expr {
+                    couldnt_simplify_all = true; 
+                }
+                simplified_args.push(simplified_arg);
+
+            }
+
+            // simplifying not good enough, so reconstruct and return; at least
+            // we'll have potentially done some work simplifing in this pass.
+            if couldnt_simplify_all {
+                return Ok(expression_from!{e,
+                    Expr::App{
+                        expr: Box::new(expression_from!{func,
+                            Expr::Func{ inputs:arg_names, output:func_e }
+                        }),
+                        args: simplified_args
+                    }
+                });
+            }
+
+            // create scope containing simplified args to make use of in function body expr:
+            let mut function_scope = HashMap::new();            
+            for (name, arg) in arg_names.into_iter().zip(simplified_args) {
+                function_scope.insert(name,arg);
             }
 
             simplify(*func_e, scope.push(function_scope))
@@ -189,7 +241,23 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
         Expr::Block(block) => {
 
-            let new_scope = scope.push(block.scope);
+            // simplify things in the block scope against a scope including the unsimplified
+            // versions of themselves. This allows variables to reference other variables defined here.
+            //
+            // For each variable we try and simplify, we push onto the
+            // scope a RecursiveValue marker for that variable, so that if at any point while
+            // simplifying the expression bound to the variable, we encounter that same variable,
+            // an error is thrown. This prevents self referential expressions.
+            //
+            let block_scope = scope.push(block.scope.clone());
+            let mut simplified_block_scope = HashMap::new();
+            for (name,expr) in block.scope {
+                let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
+                let simplified_expr = simplify(expr,s)?;
+                simplified_block_scope.insert(name, simplified_expr);
+            }
+
+            let new_scope = scope.push(simplified_block_scope);
             let mut blocks = vec![];
             for val in block.css {
                 match val {
@@ -207,10 +275,8 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 }
             }
 
-            Ok(Expression{
-                start: e.start,
-                end: e.end,
-                expr: Expr::NestedSimpleBlock(NestedSimpleBlock{
+            Ok(expression_from!{e,
+                Expr::NestedSimpleBlock(NestedSimpleBlock{
                     selector: block.selector,
                     css: blocks
                 })
