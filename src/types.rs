@@ -20,7 +20,22 @@ pub enum Primitive {
 #[derive(PartialEq,Debug,Clone)]
 pub enum CSSEntry {
     Expr(Expression),
-    KeyVal{ key: String, val: String }
+    KeyVal{ key: String, val: Vec<CSSValueBit> }
+}
+
+/// we parse CSS values into pieces, which are either raw strings
+/// or expressions that we'd like interpolated into the output. We
+/// allow a limited set of expressions in css values:
+///
+/// $var
+/// $var.a.b
+/// $var($foo,3px)
+/// $var.a.b(3px,$foo)
+/// ${ arbitrary_expr_here }
+#[derive(PartialEq,Debug,Clone)]
+pub enum CSSValueBit {
+    Str(String),
+    Expr(Expression)
 }
 
 /// represents a CSS block, along with any scope that encloses it (variable definitions).

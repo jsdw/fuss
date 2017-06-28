@@ -1,4 +1,4 @@
-use types::{Expression,Expr,Primitive,InputPosition,Position,CSSEntry,NestedCSSEntry,NestedSimpleBlock};
+use types::{Expression,Expr,Primitive,InputPosition,Position,CSSEntry,CSSValueBit,NestedCSSEntry,NestedSimpleBlock};
 use std::collections::HashMap;
 use list::List;
 use chomp;
@@ -18,8 +18,10 @@ pub enum ErrorType {
     WrongNumberOfArguments{expected: usize, got: usize},
     NotACSSBlock,
     LoopDetected,
-    PropertyDoesNotExist(String,String)
+    PropertyDoesNotExist(String,String),
+    InvalidExpressionInCssValue
 }
+use self::ErrorType::*;
 
 #[derive(Clone,Debug)]
 struct Scope(List<HashMap<String,Expression>>);
@@ -46,6 +48,8 @@ impl Scope {
         Scope(self.0.push(values))
     }
 
+    /// push one key and value onto the scope, returning a new one and
+    /// leaving the original unchanged:
     fn push_one(&self, key: String, value: Expression) -> Scope {
         let mut map = HashMap::with_capacity(1);
         map.insert(key, value);
@@ -103,7 +107,6 @@ macro_rules! expression_from {
 fn simplify(e: Expression, scope: Scope) -> Res {
 
     use types::Primitive::*;
-    use self::ErrorType::*;
 
     match e.expr {
 
@@ -292,7 +295,18 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                         blocks.push( NestedCSSEntry::Block(Box::new(block)) );
                     },
                     CSSEntry::KeyVal{ key, val } => {
-                        blocks.push( NestedCSSEntry::KeyVal{ key:key, val:val } );
+                        let mut strings = vec![];
+                        for bit in val {
+                            match bit {
+                                CSSValueBit::Str(s) => strings.push(s),
+                                CSSValueBit::Expr(e) => {
+                                    let simplified = simplify(e, scope.clone())?;
+                                    let s = css_expr_to_string(simplified)?;
+                                    strings.push(s);
+                                }
+                            }
+                        }
+                        blocks.push( NestedCSSEntry::KeyVal{ key:key, val:strings.concat() } );
                     }
                 }
             }
@@ -310,6 +324,17 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
     }
 
+}
+
+// convert expressions embedded in CSS values to string pieces where possible.
+fn css_expr_to_string(e: Expression) -> Result<String,Error> {
+    use types::Primitive::*;
+    match e.expr {
+        Expr::Prim(Str(s)) => Ok(s),
+        Expr::Prim(Bool(b)) => Ok(if b { "true".to_owned() } else { "false".to_owned() }),
+        Expr::Prim(Unit(num,suffix)) => Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0'),suffix}),
+        _ => err!(e,InvalidExpressionInCssValue)
+    }
 }
 
 #[cfg(test)]

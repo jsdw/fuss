@@ -1,4 +1,4 @@
-use types::{Expression, Expr, Block, CSSEntry, Primitive, Position};
+use types::{Expression, Expr, Block, CSSEntry, CSSValueBit, Primitive, Position};
 use chomp::types::numbering::InputPosition;
 use chomp::prelude::*;
 use chomp::parsers;
@@ -84,20 +84,52 @@ fn skip_spaces<I: Chars>(i: I) -> Output<I,()> {
     skip_while(i, |c| c == '\t' || c == ' ' || c == '\n').map_err(Error::UnexpectedCharacter)
 }
 
-fn css_key<I: Chars>(i: I) -> Output<I,String> {
+fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
     parse!{i;
-        let v = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
-        ret as_string(v)
+        let key = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
+            token(':');
+            skip_spaces();
+        let val = many1(css_value_bit);
+            skip_spaces();
+            token(';');
+        ret CSSEntry::KeyVal{
+            key: as_string(key),
+            val: val
+        }
     }
 }
 
-fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
+fn css_value_bit<I: Chars>(i: I) -> Output<I,CSSValueBit> {
     parse!{i;
-        let key = css_key();
-            token(':');
-        let val = take_till(|c| c == ';');
-            token(';');
-        ret CSSEntry::KeyVal{ key: key.to_owned(), val: as_string(val).trim().to_owned() }
+        css_value_expr() <|> css_value_string()
+    }
+}
+fn css_value_expr<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+    parse!{i;
+        css_value_expr_anything() <|> css_value_expr_var()
+    }
+}
+fn css_value_expr_var<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+    parse!{i;
+        let expr = variable_name_expr();
+        ret CSSValueBit::Expr(expr);
+    }
+}
+fn css_value_expr_anything<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+    parse!{i;
+            token('$');
+            token('{');
+            skip_spaces();
+        let expr = expr();
+            skip_spaces();
+            token('}');
+        ret CSSValueBit::Expr(expr)
+    }
+}
+fn css_value_string<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+    parse!{i;
+        let s = take_while1(|c| c != '$' && c != ';');
+        ret CSSValueBit::Str(as_string(s))
     }
 }
 
@@ -551,9 +583,29 @@ pub mod tests {
 
     parse_test!{test_css_keyval using css_keyval;
         "-hello-there: you(123,456 );" =>
-            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you(123,456 )".to_owned() };
+            CSSEntry::KeyVal{ key: s("-hello-there"), val: vec![ CSSValueBit::Str(s("you(123,456 )")) ] };
         "-hello-there:you;" =>
-            CSSEntry::KeyVal{ key: "-hello-there".to_owned(), val: "you".to_owned() };
+            CSSEntry::KeyVal{ key: s("-hello-there"), val: vec![ CSSValueBit::Str(s("you")) ] };
+        "-hello-there: rgb($hello, $b, 2px);" =>
+            CSSEntry::KeyVal{
+                key: s("-hello-there"),
+                val: vec![
+                    CSSValueBit::Str(s("rgb(")),
+                    CSSValueBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
+                    CSSValueBit::Str(s(", ")),
+                    CSSValueBit::Expr( e(Expr::Var(s("b"),vec![])) ),
+                    CSSValueBit::Str(s(", 2px)")),
+                ]
+            };
+        "-hello-there: stuff${ $hello }stuff;" =>
+            CSSEntry::KeyVal{
+                key: s("-hello-there"),
+                val: vec![
+                    CSSValueBit::Str(s("stuff")),
+                    CSSValueBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
+                    CSSValueBit::Str(s("stuff"))
+                ]
+            };
     }
 
     #[test]
