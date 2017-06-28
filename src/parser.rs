@@ -288,12 +288,16 @@ fn variable_name_expr<I: Chars>(i: I) -> Output<I,Expression> {
     parse!{i;
         let start_pos = pos();
         token(VAR_PREFIX);
-        let var_accessor = sep_by1(raw_variable_string, |s| token(s,'.'));
+        let vars = sep_by1(raw_variable_string, |s| token(s,'.'));
         let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:Expr::Var(var_accessor)
+        ret {
+            let mut vars: Vec<String> = vars;
+            let first = vars.remove(0);
+            Expression{
+                start:start_pos,
+                end:end_pos,
+                expr:Expr::Var(first, vars)
+            }
         }
     }
 }
@@ -387,7 +391,7 @@ fn unary_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
                 expr: Box::new(Expression{
                     start:start_pos,
                     end:end_pos_tok,
-                    expr:Expr::Var(vec![tok.to_string()])
+                    expr:Expr::Var(tok.to_string(), vec![])
                 }),
                 args: vec![arg]
             }
@@ -457,7 +461,7 @@ fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
                     expr: Box::new(Expression{
                         start: op_start,
                         end: op_end,
-                        expr: Expr::Var(vec![op])
+                        expr: Expr::Var(op,vec![])
                     }),
                     args: vec![ first_arg, second_arg ]
                 }
@@ -507,7 +511,7 @@ pub mod tests {
     }
 
     fn var(name: &str) -> Box<Expression> {
-        Box::new(e(Expr::Var(vec![s(name)])))
+        Box::new(e(Expr::Var(s(name),vec![])))
     }
 
     // parses the inner part of the macro; this can determine what
@@ -603,7 +607,7 @@ pub mod tests {
         "!$hello" =>
             e(Expr::App{
                 expr: var("!"),
-                args: vec![ e(Expr::Var(vec![s("hello")])) ]
+                args: vec![ e(Expr::Var(s("hello"),vec![])) ]
             });
         "!$hello()" =>
             e(Expr::App{
@@ -616,22 +620,22 @@ pub mod tests {
                 args: vec![
                     e(Expr::App{
                         expr: var("hello"),
-                        args: vec![ e(Expr::Var(vec![s("a")])) ]
+                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
                     })
                 ]
             });
         "$hello.there($a)" =>
             e(Expr::App{
-                expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
-                args: vec![ e(Expr::Var(vec![s("a")])) ]
+                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                args: vec![ e(Expr::Var(s("a"),vec![])) ]
             });
         "!$hello.there($a)" =>
             e(Expr::App{
                 expr: var("!"),
                 args: vec![
                     e(Expr::App{
-                        expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
-                        args: vec![ e(Expr::Var(vec![s("a")])) ]
+                        expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
                     })
                 ]
             });
@@ -643,8 +647,8 @@ pub mod tests {
                         expr: var("!"),
                         args: vec![
                             e(Expr::App{
-                                expr: Box::new(e(Expr::Var(vec![ s("hello"), s("there") ]))),
-                                args: vec![ e(Expr::Var(vec![s("a")])) ]
+                                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                                args: vec![ e(Expr::Var(s("a"),vec![])) ]
                             })
                         ]
                     }),

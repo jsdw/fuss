@@ -18,7 +18,7 @@ pub enum ErrorType {
     WrongNumberOfArguments{expected: usize, got: usize},
     NotACSSBlock,
     LoopDetected,
-    PropertyDoesNotExist(Vec<String>,String)
+    PropertyDoesNotExist(String,String)
 }
 
 #[derive(Clone,Debug)]
@@ -117,45 +117,39 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
         /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(name) => {
+        Expr::Var(name, rest) => {
 
-            if let Some( (first,rest) ) = name.split_first() {
-
-                // locate the initial variable on scope somewhere:
-                let mut var = scope.find(first).map_or(
-                    err!(e,CantFindVariable(first.clone())),
-                    |var| {
-                        // We found a var but it is a RecursiveValue, meaning we are trying
-                        // to define a value in terms of itself.
-                        if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
-                            err!(var, LoopDetected)
-                        } else {
-                            Ok(var)
-                        }
+            // locate the initial variable on scope somewhere:
+            let mut var = scope.find(&name).map_or(
+                err!(e,CantFindVariable(name.clone())),
+                |var| {
+                    // We found a var but it is a RecursiveValue, meaning we are trying
+                    // to define a value in terms of itself.
+                    if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
+                        err!(var, LoopDetected)
+                    } else {
+                        Ok(var)
                     }
-                )?;
+                }
+            )?;
 
-                // if asked to, try and dig into the variable, failing
-                // as soon as we don't have a scope to dig into any more.
-                for key in rest {
-                    if let Expr::NestedSimpleBlock(ref block) = var.expr {
-                        match block.scope.get(key) {
-                            Some(val) => {
-                                var = val;
-                            },
-                            None => {
-                                return err!(e, PropertyDoesNotExist(name.clone(), key.clone()));
-                            }
+            // if asked to, try and dig into the variable, failing
+            // as soon as we don't have a scope to dig into any more.
+            for key in rest {
+                if let Expr::NestedSimpleBlock(ref block) = var.expr {
+                    match block.scope.get(&key) {
+                        Some(val) => {
+                            var = val;
+                        },
+                        None => {
+                            return err!(e, PropertyDoesNotExist(name.clone(), key));
                         }
                     }
                 }
-
-                // if we have found something from our digging, copy and return it:
-                Ok(var.clone())
-
-            } else {
-                err!(e, CantFindVariable("".to_owned()))
             }
+
+            // if we have found something from our digging, copy and return it:
+            Ok(var.clone())
 
         },
 
@@ -191,7 +185,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 let var = Expression{
                     start: e.start,
                     end: e.end,
-                    expr: Expr::Var(vec![arg.clone()])
+                    expr: Expr::Var(arg.clone(),vec![])
                 };
                 input_vars.insert(arg.clone(), var);
             }
@@ -234,7 +228,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 // which means we are simplifying inside a Func, and this
                 // is a variable that doesn't yet have a known value. this
                 // meamns we can't yet simplify further.
-                if let Expr::Var(_) = simplified_arg.expr {
+                if let Expr::Var(..) = simplified_arg.expr {
                     couldnt_simplify_all = true;
                 }
                 simplified_args.push(simplified_arg);
