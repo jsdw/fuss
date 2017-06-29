@@ -5,5 +5,4 @@ authors = ["James Wilson <me@unbui.lt>"]
 
 [dependencies]
 chomp = "0.3.1"
-# nom = "2.2.1"
-# assert_approx_eq = "1.0.0"
+lazy_static = "0.2.8"

@@ -30,8 +30,6 @@ pub enum CSSEntry {
 ///
 /// $var
 /// $var.a.b
-/// $var($foo,3px)
-/// $var.a.b(3px,$foo)
 /// ${ arbitrary_expr_here }
 #[derive(PartialEq,Debug,Clone)]
 pub enum CSSValueBit {
