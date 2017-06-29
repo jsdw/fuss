@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use chomp::types::numbering::Numbering;
 use chomp::types::Buffer;
+use parser;
 
 //re-export this:
 pub use chomp::types::numbering::InputPosition;
@@ -64,12 +65,13 @@ pub enum NestedCSSEntry {
     Block(Box<NestedSimpleBlock>)
 }
 
-
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
     /// A primitive eg "hello", 12, 100%, 8px, true, false
     Prim(Primitive),
+    /// A primitive function
+    PrimFunc( fn(Vec<Expression>) -> Res ),
     /// An if expression eg if this then 2px else 20%
     If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
     /// A function eg ($a, $b) => $a + $b
@@ -140,4 +142,27 @@ impl Numbering for Position {
             self.col += 1;
         }
     }
+}
+
+/// Error types
+pub type Res = Result<Expression,Error>;
+
+#[derive(PartialEq,Debug)]
+pub struct Error {
+    pub ty: ErrorType,
+    pub file: String,
+    pub start: Position,
+    pub end: Position
+}
+
+#[derive(PartialEq,Debug)]
+pub enum ErrorType {
+    ParseError(parser::Error),
+    CantFindVariable(String),
+    NotAFunction,
+    WrongNumberOfArguments{expected: usize, got: usize},
+    NotACSSBlock,
+    LoopDetected,
+    PropertyDoesNotExist(String,String),
+    InvalidExpressionInCssValue
 }

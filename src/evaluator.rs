@@ -1,27 +1,9 @@
-use types::{Expression,Expr,Primitive,InputPosition,Position,CSSEntry,CSSValueBit,NestedCSSEntry,NestedSimpleBlock};
+use types::*;
+use types::ErrorType::*;
 use std::collections::HashMap;
 use list::List;
 use chomp;
 use parser;
-
-pub type Res = Result<Expression,Error>;
-pub struct Error {
-    ty: ErrorType,
-    file: String,
-    start: Position,
-    end: Position
-}
-pub enum ErrorType {
-    ParseError(parser::Error),
-    CantFindVariable(String),
-    NotAFunction,
-    WrongNumberOfArguments{expected: usize, got: usize},
-    NotACSSBlock,
-    LoopDetected,
-    PropertyDoesNotExist(String,String),
-    InvalidExpressionInCssValue
-}
-use self::ErrorType::*;
 
 #[derive(Clone,Debug)]
 struct Scope(List<HashMap<String,Expression>>);
@@ -112,6 +94,10 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
         /// We don't need to simplify primitives; they don't get any simpler!
         Expr::Prim(_) => Ok(e),
+
+        /// primitive functions are essentailly black boxes that we pass exprs into
+        /// and get some result out; we can't simplify them.
+        Expr::PrimFunc(..) => Ok(e),
 
         /// This is our target output, so we can't simplify it further
         Expr::NestedSimpleBlock(_) => Ok(e),
@@ -208,19 +194,9 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// function inputs into, and then simplifying the body against that.
         Expr::App{ expr: boxed_expr, args } => {
 
+            // simplify the func expr, which might at this point be a variable
+            // or something. Then, simplify the args.
             let func = simplify(*boxed_expr, scope.clone())?;
-            let (arg_names, func_e) = match func.expr {
-                Expr::Func{ inputs: arg_names, output: func_e} => Ok( (arg_names, func_e) ),
-                _ => err!(func, NotAFunction)
-            }?;
-
-            if arg_names.len() != args.len() {
-                return err!(e,WrongNumberOfArguments{
-                    expected: arg_names.len(),
-                    got: args.len()
-                });
-            }
-
             let mut couldnt_simplify_all = false;
             let mut simplified_args = vec![];
             for arg in args.into_iter() {
@@ -243,21 +219,42 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             if couldnt_simplify_all {
                 return Ok(expression_from!{e,
                     Expr::App{
-                        expr: Box::new(expression_from!{func,
-                            Expr::Func{ inputs:arg_names, output:func_e }
-                        }),
+                        expr: Box::new(func),
                         args: simplified_args
                     }
                 });
             }
 
-            // create scope containing simplified args to make use of in function body expr:
-            let mut function_scope = HashMap::new();
-            for (name, arg) in arg_names.into_iter().zip(simplified_args) {
-                function_scope.insert(name,arg);
-            }
+            // now we've simplified the args and the func, see what type of
+            // func we are dealing with so that we can apply the args to it
+            // and get back a result.
+            match func.expr {
+                Expr::Func{ inputs: arg_names, output: func_e} => {
 
-            simplify(*func_e, scope.push(function_scope))
+                    if arg_names.len() != simplified_args.len() {
+                        return err!(e,WrongNumberOfArguments{
+                            expected: arg_names.len(),
+                            got: simplified_args.len()
+                        });
+                    }
+
+                    // create scope containing simplified args to make use of in function body expr:
+                    let mut function_scope = HashMap::new();
+                    for (name, arg) in arg_names.into_iter().zip(simplified_args) {
+                        function_scope.insert(name,arg);
+                    }
+
+                    simplify(*func_e, scope.push(function_scope))
+
+                },
+                Expr::PrimFunc(func) => {
+
+                    // primitive func? just run it on the args then!
+                    func(simplified_args)
+
+                }
+                _ => err!(func, NotAFunction)
+            }
 
         },
 
