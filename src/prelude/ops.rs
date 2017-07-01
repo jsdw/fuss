@@ -144,6 +144,70 @@ pub fn not(mut args: Vec<Expression>) -> PrimRes {
 
 }
 
+/// "=="
+pub fn equal(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    Ok(Expr::Prim(Bool(a == b)))
+
+}
+
+/// "!="
+pub fn not_equal(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    Ok(Expr::Prim(Bool(a != b)))
+
+}
+
+/// "&&"
+pub fn boolean_and(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    if let (Expr::Prim(Bool(a)), Expr::Prim(Bool(b))) = (a.expr,b.expr) {
+        Ok(Expr::Prim(Bool(a && b)))
+    } else {
+        Err(ErrorType::WrongTypeOfArguments{ message: "only booleans can be &&'d".to_owned() })
+    }
+
+}
+
+/// "||"
+pub fn boolean_or(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    if let (Expr::Prim(Bool(a)), Expr::Prim(Bool(b))) = (a.expr,b.expr) {
+        Ok(Expr::Prim(Bool(a || b)))
+    } else {
+        Err(ErrorType::WrongTypeOfArguments{ message: "only booleans can be ||'d".to_owned() })
+    }
+
+}
+
 fn pick_unit(au: String, bu: String) -> Result<String,ErrorType> {
     if au.len() > 0 && bu.len() > 0 && au != bu {
         Err(ErrorType::UnitMismatch)

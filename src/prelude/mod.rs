@@ -14,6 +14,10 @@ scope!{PRELUDE;
     "*" => ops::multiply;
     "^" => ops::pow;
     "!" => ops::not;
+    "==" => ops::equal;
+    "!=" => ops::not_equal;
+    "&&" => ops::boolean_and;
+    "||" => ops::boolean_or;
     "to_boolean" => casting::boolean;
     "to_string" => casting::string;
 
