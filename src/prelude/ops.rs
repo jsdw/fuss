@@ -1,8 +1,9 @@
 use types::*;
 use types::Primitive::*;
+use prelude::casting;
 
 /// The "+" operator.
-pub fn Add(mut args: Vec<Expression>) -> PrimRes {
+pub fn add(mut args: Vec<Expression>) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -14,15 +15,7 @@ pub fn Add(mut args: Vec<Expression>) -> PrimRes {
     match (a.expr, b.expr) {
         (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
 
-            let unit =
-                if au.len() > 0 && bu.len() > 0 && au != bu {
-                    Err(ErrorType::UnitMismatch)
-                } else if au.len() > 0 {
-                    Ok(au)
-                } else {
-                    Ok(bu)
-                }?;
-
+            let unit = pick_unit(au,bu)?;
             Ok(Expr::Prim(Unit(a + b, unit)))
 
         },
@@ -37,7 +30,7 @@ pub fn Add(mut args: Vec<Expression>) -> PrimRes {
 }
 
 /// The "-" operator. Needs to handle unary minus or subtract.
-pub fn Subtract(mut args: Vec<Expression>) -> PrimRes {
+pub fn subtract(mut args: Vec<Expression>) -> PrimRes {
 
     let len = args.len();
 
@@ -60,15 +53,7 @@ pub fn Subtract(mut args: Vec<Expression>) -> PrimRes {
 
         if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
 
-            let unit =
-                if au.len() > 0 && bu.len() > 0 && au != bu {
-                    Err(ErrorType::UnitMismatch)
-                } else if au.len() > 0 {
-                    Ok(au)
-                } else {
-                    Ok(bu)
-                }?;
-
+            let unit = pick_unit(au,bu)?;
             Ok(Expr::Prim(Unit(a - b, unit)))
 
         } else {
@@ -80,4 +65,91 @@ pub fn Subtract(mut args: Vec<Expression>) -> PrimRes {
         Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() })
     }
 
+}
+
+/// The "/" operator
+pub fn divide(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+
+        let unit = pick_unit(au,bu)?;
+        Ok(Expr::Prim(Unit(a / b, unit)))
+
+    } else {
+        Err(ErrorType::WrongTypeOfArguments{ message: "only numbers can be divided with eachother".to_owned() })
+    }
+
+}
+
+/// The "*" operator
+pub fn multiply(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+
+        let unit = pick_unit(au,bu)?;
+        Ok(Expr::Prim(Unit(a * b, unit)))
+
+    } else {
+        Err(ErrorType::WrongTypeOfArguments{ message: "only numbers can be multiplied with eachother".to_owned() })
+    }
+
+}
+
+/// The "^" operator
+pub fn pow(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+
+        let unit = pick_unit(au,bu)?;
+        Ok(Expr::Prim(Unit(a.powf(b), unit)))
+
+    } else {
+        Err(ErrorType::WrongTypeOfArguments{ message: "only numbers can be divided with eachother".to_owned() })
+    }
+
+}
+
+/// The unary "!" operator
+pub fn not(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 1 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
+    }
+
+    let a = args.remove(0);
+    let b = casting::raw_boolean(a.expr)?;
+
+    Ok(Expr::Prim(Bool(!b)))
+
+}
+
+fn pick_unit(au: String, bu: String) -> Result<String,ErrorType> {
+    if au.len() > 0 && bu.len() > 0 && au != bu {
+        Err(ErrorType::UnitMismatch)
+    } else if au.len() > 0 {
+        Ok(au)
+    } else {
+        Ok(bu)
+    }
 }

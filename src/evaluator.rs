@@ -121,13 +121,11 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
             let cond = simplify(*boxed_cond, scope.clone())?;
 
-            let is_true = match cond.expr {
-                Expr::Prim(Str(s)) => s.len() > 0,
-                Expr::Prim(Bool(b)) => b,
-                Expr::Prim(Unit(n,_)) => n != ::std::f64::NAN && n != 0f64,
-                Expr::Func{..} => true,
-                _ => false
-            };
+            use prelude::casting::raw_boolean;
+            let is_true = match raw_boolean(cond.expr){
+                Ok(b) => Ok(b),
+                Err(err) => err!{cond,err}
+            }?;
 
             if is_true {
                 simplify(*boxed_then, scope)
@@ -274,8 +272,12 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                             match bit {
                                 CSSValueBit::Str(s) => strings.push(s),
                                 CSSValueBit::Expr(e) => {
-                                    let simplified = simplify(e, scope.clone())?;
-                                    let s = css_expr_to_string(simplified)?;
+                                    let e = simplify(e, scope.clone())?;
+                                    use prelude::casting::raw_string;
+                                    let s = match raw_string(e.expr) {
+                                        Ok(s) => Ok(s),
+                                        Err(err) => err!{e,err}
+                                    }?;
                                     strings.push(s);
                                 }
                             }
@@ -298,17 +300,6 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
     }
 
-}
-
-// convert expressions embedded in CSS values to string pieces where possible.
-fn css_expr_to_string(e: Expression) -> Result<String,Error> {
-    use types::Primitive::*;
-    match e.expr {
-        Expr::Prim(Str(s)) => Ok(s),
-        Expr::Prim(Bool(b)) => Ok(if b { "true".to_owned() } else { "false".to_owned() }),
-        Expr::Prim(Unit(num,suffix)) => Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0'),suffix}),
-        _ => err!(e,InvalidExpressionInCssValue)
-    }
 }
 
 #[cfg(test)]
