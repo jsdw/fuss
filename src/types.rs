@@ -69,7 +69,7 @@ pub enum Expr {
     /// A primitive eg "hello", 12, 100%, 8px, true, false
     Prim(Primitive),
     /// A primitive function
-    PrimFunc( fn(Vec<Expression>) -> Res ),
+    PrimFunc( fn(Vec<Expression>) -> PrimRes ),
     /// An if expression eg if this then 2px else 20%
     If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
     /// A function eg ($a, $b) => $a + $b
@@ -142,9 +142,10 @@ impl Numbering for Position {
     }
 }
 
-/// Error types
 pub type Res = Result<Expression,Error>;
+pub type PrimRes = Result<Expr,ErrorType>;
 
+/// Error types
 #[derive(PartialEq,Debug)]
 pub struct Error {
     pub ty: ErrorType,
@@ -159,8 +160,10 @@ pub enum ErrorType {
     CantFindVariable(String),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
+    WrongTypeOfArguments{message: String},
     NotACSSBlock,
     LoopDetected,
     PropertyDoesNotExist(String,String),
-    InvalidExpressionInCssValue
+    InvalidExpressionInCssValue,
+    UnitMismatch
 }

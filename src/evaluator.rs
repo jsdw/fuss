@@ -60,32 +60,6 @@ fn eval_str(text: &str, name: &str) -> Res {
 
 }
 
-/// generate an Err from an Expression and an ErrorType. This is a macro
-/// so that it can pluck out only what it needs from the struct, rather than
-/// trying to move the whole thing
-macro_rules! err {
-    ($e:ident, $err:expr) => ({
-        let start = $e.start;
-        let end = $e.end;
-        Err(Error{
-            ty: $err,
-            file: String::new(),
-            start: start,
-            end: end
-        })
-    })
-}
-
-macro_rules! expression_from {
-    ($e:ident, $expr:expr) => (
-        Expression{
-            start: $e.start,
-            end: $e.end,
-            expr: $expr
-        }
-    )
-}
-
 fn simplify(e: Expression, scope: Scope) -> Res {
 
     use types::Primitive::*;
@@ -250,7 +224,10 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                 Expr::PrimFunc(func) => {
 
                     // primitive func? just run it on the args then!
-                    func(simplified_args)
+                    match func(simplified_args) {
+                        Ok(res) => Ok(expression_from!{e, res}),
+                        Err(err) => err!{e, err}
+                    }
 
                 }
                 _ => err!(func, NotAFunction)
