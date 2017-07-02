@@ -172,6 +172,94 @@ pub fn not_equal(mut args: Vec<Expression>) -> PrimRes {
 
 }
 
+/// ">"
+pub fn greater_than(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    match (a.expr, b.expr) {
+        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+            Ok(Expr::Prim(Bool(a > b)))
+        },
+        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+            Ok(Expr::Prim(Bool(a > b)))
+        },
+        _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '>'".to_owned() })
+    }
+
+}
+
+/// ">="
+pub fn greater_than_or_equal(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    match (a.expr, b.expr) {
+        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+            Ok(Expr::Prim(Bool(a >= b)))
+        },
+        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+            Ok(Expr::Prim(Bool(a >= b)))
+        },
+        _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '>='".to_owned() })
+    }
+
+}
+
+/// "<"
+pub fn less_than(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    match (a.expr, b.expr) {
+        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+            Ok(Expr::Prim(Bool(a < b)))
+        },
+        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+            Ok(Expr::Prim(Bool(a < b)))
+        },
+        _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '<'".to_owned() })
+    }
+
+}
+
+/// "<="
+pub fn less_than_or_equal(mut args: Vec<Expression>) -> PrimRes {
+
+    if args.len() != 2 {
+        return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
+    }
+
+    let b = args.remove(1);
+    let a = args.remove(0);
+
+    match (a.expr, b.expr) {
+        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+            Ok(Expr::Prim(Bool(a <= b)))
+        },
+        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+            Ok(Expr::Prim(Bool(a <= b)))
+        },
+        _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '<='".to_owned() })
+    }
+
+}
+
 /// "&&"
 pub fn boolean_and(mut args: Vec<Expression>) -> PrimRes {
 
