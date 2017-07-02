@@ -156,7 +156,8 @@ impl Scope {
 /// to al prim funcs etc.
 #[derive(Clone,Debug,PartialEq)]
 pub struct Context {
-    pub path: PathBuf
+    pub path: PathBuf,
+    pub root: PathBuf
 }
 
 /// a line and column number denoting a position in some text:
@@ -213,7 +214,7 @@ pub type PrimRes = Result<Expr,ErrorType>;
 #[derive(PartialEq,Debug)]
 pub struct Error {
     pub ty: ErrorType,
-    pub file: String,
+    pub file: PathBuf,
     pub start: Position,
     pub end: Position
 }
@@ -229,5 +230,8 @@ pub enum ErrorType {
     LoopDetected,
     PropertyDoesNotExist(String,String),
     InvalidExpressionInCssValue,
-    UnitMismatch
+    UnitMismatch,
+    CannotOpenFile(PathBuf),
+    CannotReadFile(PathBuf),
+    ImportError(Box<Error>)
 }

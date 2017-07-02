@@ -5,11 +5,12 @@
 /// trying to move the whole thing
 macro_rules! err {
     ($e:ident, $err:expr) => ({
+        use std::path::PathBuf;
         let start = $e.start;
         let end = $e.end;
         Err(Error{
             ty: $err,
-            file: String::new(),
+            file: PathBuf::new(),
             start: start,
             end: end
         })

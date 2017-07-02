@@ -1,5 +1,6 @@
 pub mod ops;
 pub mod casting;
+pub mod import;
 
 use types::*;
 use std::collections::HashMap;
@@ -24,5 +25,6 @@ scope!{PRELUDE;
     "||" => ops::boolean_or;
     "to_boolean" => casting::boolean;
     "to_string" => casting::string;
+    "import" => import::import;
 
 }

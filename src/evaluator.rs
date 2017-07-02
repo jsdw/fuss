@@ -25,7 +25,7 @@ use parser;
 
 // }
 
-fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
+pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
     use types::Primitive::*;
 
