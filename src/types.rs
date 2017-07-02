@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use chomp::types::numbering::Numbering;
 use chomp::types::Buffer;
 use list::List;
+use std::path::PathBuf;
+use std::fmt;
 use parser;
 
 //re-export this:
@@ -70,7 +72,7 @@ pub enum Expr {
     /// A primitive eg "hello", 12, 100%, 8px, true, false
     Prim(Primitive),
     /// A primitive function
-    PrimFunc( fn(Vec<Expression>) -> PrimRes ),
+    PrimFunc(PrimFunc),
     /// An if expression eg if this then 2px else 20%
     If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
     /// A function eg ($a, $b) => $a + $b
@@ -93,6 +95,25 @@ pub struct Expression {
     pub start: Position,
     pub end: Position,
     pub expr: Expr
+}
+
+/// Wrap our primfuncs into a struct so that we can implement basic
+/// traits on them, since they can't be derived automatically.
+pub struct PrimFunc(pub fn(Vec<Expression>,&Context) -> PrimRes);
+impl Clone for PrimFunc {
+    fn clone(&self) -> PrimFunc {
+        PrimFunc(self.0)
+    }
+}
+impl fmt::Debug for PrimFunc {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<<function>>")
+    }
+}
+impl PartialEq for PrimFunc {
+    fn eq(&self, other: &PrimFunc) -> bool {
+        false
+    }
 }
 
 /// A stack that we can push values onto in order to represent the
@@ -131,13 +152,19 @@ impl Scope {
     }
 }
 
+/// The context in which a thing is evaluated. This is read only and is passed
+/// to al prim funcs etc.
+#[derive(Clone,Debug,PartialEq)]
+pub struct Context {
+    pub path: PathBuf
+}
+
 /// a line and column number denoting a position in some text:
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct Position {
     pub line: u64,
     pub col: u64
 }
-
 impl Position {
     pub fn new() -> Position {
         Position{line: 0, col: 0}

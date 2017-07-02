@@ -37,7 +37,7 @@ macro_rules! scope {
                     map.insert($key.to_owned(), Expression{
                         start: Position::new(),
                         end: Position::new(),
-                        expr: Expr::PrimFunc($func)
+                        expr: Expr::PrimFunc(PrimFunc($func))
                     });
                 )*
                 map

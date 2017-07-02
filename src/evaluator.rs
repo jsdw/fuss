@@ -4,28 +4,28 @@ use std::collections::HashMap;
 use chomp;
 use parser;
 
-fn eval_str(text: &str, name: &str) -> Res {
+// fn eval_str(text: &str, name: &str) -> Res {
 
-    let pos = Position::new();
-    let input = InputPosition::new(text, pos);
-    let (rest, res) = chomp::run_parser(input, parser::parse);
+//     let pos = Position::new();
+//     let input = InputPosition::new(text, pos);
+//     let (rest, res) = chomp::run_parser(input, parser::parse);
 
-    match res {
-        Ok(expr) => simplify(expr, Scope::new()).map_err(|mut e| {
-            e.file = name.to_owned();
-            e
-        }),
-        Err(err) => Err(Error{
-            ty: ErrorType::ParseError(err),
-            file: name.to_owned(),
-            start: rest.position(),
-            end: rest.position()
-        })
-    }
+//     match res {
+//         Ok(expr) => eval(expr, Scope::new()).map_err(|mut e| {
+//             e.file = name.to_owned();
+//             e
+//         }),
+//         Err(err) => Err(Error{
+//             ty: ErrorType::ParseError(err),
+//             file: name.to_owned(),
+//             start: rest.position(),
+//             end: rest.position()
+//         })
+//     }
 
-}
+// }
 
-fn simplify(e: Expression, scope: Scope) -> Res {
+fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
     use types::Primitive::*;
 
@@ -84,7 +84,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
         /// If simplifies based on the boolean-ness of the condition!
         Expr::If{ cond: boxed_cond, then: boxed_then, otherwise: boxed_else } => {
 
-            let cond = simplify(*boxed_cond, scope.clone())?;
+            let cond = eval(*boxed_cond, scope.clone(), context)?;
 
             use prelude::casting::raw_boolean;
             let is_true = match raw_boolean(cond.expr){
@@ -93,9 +93,9 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             }?;
 
             if is_true {
-                simplify(*boxed_then, scope)
+                eval(*boxed_then, scope, context)
             } else {
-                simplify(*boxed_else, scope)
+                eval(*boxed_else, scope, context)
             }
         },
 
@@ -120,10 +120,10 @@ fn simplify(e: Expression, scope: Scope) -> Res {
 
             // simplify the func expr, which might at this point be a variable
             // or something. Then, simplify the args.
-            let func = simplify(*boxed_expr, scope.clone())?;
+            let func = eval(*boxed_expr, scope.clone(), context)?;
             let mut simplified_args = Vec::with_capacity(args.len());
             for arg in args.into_iter() {
-                let simplified_arg = simplify(arg, scope.clone())?;
+                let simplified_arg = eval(arg, scope.clone(), context)?;
                 simplified_args.push(simplified_arg);
             }
 
@@ -146,13 +146,13 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                         function_scope.insert(name,arg);
                     }
 
-                    simplify(*func_e, scope.push(function_scope))
+                    eval(*func_e, scope.push(function_scope), context)
 
                 },
                 Expr::PrimFunc(func) => {
 
                     // primitive func? just run it on the args then!
-                    match func(simplified_args) {
+                    match func.0(simplified_args, context) {
                         Ok(res) => Ok(expression_from!{e, res}),
                         Err(err) => err!{e, err}
                     }
@@ -180,7 +180,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             let mut simplified_block_scope = HashMap::new();
             for (name,expr) in block.scope {
                 let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
-                let simplified_expr = simplify(expr,s)?;
+                let simplified_expr = eval(expr,s,context)?;
                 simplified_block_scope.insert(name, simplified_expr);
             }
 
@@ -189,7 +189,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             for val in block.css {
                 match val {
                     CSSEntry::Expr(expr) => {
-                        let css_expr = simplify(expr, new_scope.clone())?;
+                        let css_expr = eval(expr, new_scope.clone(),context)?;
                         let block = match css_expr.expr {
                             Expr::NestedSimpleBlock(block) => block,
                             _ => return err!(css_expr, NotACSSBlock)
@@ -202,7 +202,7 @@ fn simplify(e: Expression, scope: Scope) -> Res {
                             match bit {
                                 CSSValueBit::Str(s) => strings.push(s),
                                 CSSValueBit::Expr(e) => {
-                                    let e = simplify(e, scope.clone())?;
+                                    let e = eval(e, scope.clone(),context)?;
                                     use prelude::casting::raw_string;
                                     let s = match raw_string(e.expr) {
                                         Ok(s) => Ok(s),
