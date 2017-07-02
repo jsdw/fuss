@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use chomp::types::numbering::Numbering;
 use chomp::types::Buffer;
+use list::List;
 use parser;
 
 //re-export this:
@@ -73,7 +74,7 @@ pub enum Expr {
     /// An if expression eg if this then 2px else 20%
     If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
     /// A function eg ($a, $b) => $a + $b
-    Func{ inputs: Vec<String>, output: Box<Expression> },
+    Func{ inputs: Vec<String>, output: Box<Expression>, scope: Scope },
     /// A variable name or accessed variable eg $hello or $hello.there.thing
     Var(String, Vec<String>),
     /// Applying args to something (calling a function)
@@ -92,6 +93,42 @@ pub struct Expression {
     pub start: Position,
     pub end: Position,
     pub expr: Expr
+}
+
+/// A stack that we can push values onto in order to represent the
+/// current scope at any point in time.
+#[derive(Clone,Debug,PartialEq)]
+pub struct Scope(List<HashMap<String,Expression>>);
+impl Scope {
+
+    /// create a new, empty scope:
+    pub fn new() -> Self {
+        Scope(List::new().push(HashMap::new()))
+    }
+
+    /// lookup a value in the scope:
+    pub fn find<'a>(&'a self, name: &str) -> Option<&'a Expression> {
+        for map in self.0.iter() {
+            if let Some(expr) = map.get(name) {
+                return Some(expr)
+            }
+        }
+        None
+    }
+
+    /// push some new values onto the scope, returning a new one and
+    /// leaving the original unchanged:
+    pub fn push(&self, values: HashMap<String,Expression>) -> Scope {
+        Scope(self.0.push(values))
+    }
+
+    /// push one key and value onto the scope, returning a new one and
+    /// leaving the original unchanged:
+    pub fn push_one(&self, key: String, value: Expression) -> Scope {
+        let mut map = HashMap::with_capacity(1);
+        map.insert(key, value);
+        self.push(map)
+    }
 }
 
 /// a line and column number denoting a position in some text:

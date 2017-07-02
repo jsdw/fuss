@@ -1,4 +1,4 @@
-use types::{Expression, Expr, Block, CSSEntry, CSSValueBit, Primitive, Position};
+use types::*;
 use chomp::types::numbering::InputPosition;
 use chomp::prelude::*;
 use chomp::parsers;
@@ -374,7 +374,7 @@ fn function_declaration_expr<I: Chars>(i: I) -> Output<I,Expression> {
         ret Expression{
             start:start_pos,
             end:end_pos,
-            expr:Expr::Func{ inputs:vars, output: Box::new(expr) }
+            expr:Expr::Func{ inputs:vars, output:Box::new(expr), scope:Scope::new() }
         }
     }
 }
@@ -641,12 +641,14 @@ pub mod tests {
         "($apPl_3s, $b2ananA) => true" =>
             e(Expr::Func{
                 inputs: vec![s("apPl_3s"),s("b2ananA")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                output: Box::new(e(Expr::Prim(Primitive::Bool(true)))),
+                scope: Scope::new()
             });
         "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
             e(Expr::Func{
                 inputs: vec![s("a"),s("b")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(false))))
+                output: Box::new(e(Expr::Prim(Primitive::Bool(false)))),
+                scope: Scope::new()
             });
     }
 

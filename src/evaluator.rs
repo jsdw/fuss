@@ -1,43 +1,8 @@
 use types::*;
 use types::ErrorType::*;
 use std::collections::HashMap;
-use list::List;
 use chomp;
 use parser;
-
-#[derive(Clone,Debug)]
-struct Scope(List<HashMap<String,Expression>>);
-impl Scope {
-
-    /// create a new, empty scope:
-    fn new() -> Self {
-        Scope(List::new().push(HashMap::new()))
-    }
-
-    /// lookup a value in the scope:
-    fn find<'a>(&'a self, name: &str) -> Option<&'a Expression> {
-        for map in self.0.iter() {
-            if let Some(expr) = map.get(name) {
-                return Some(expr)
-            }
-        }
-        None
-    }
-
-    /// push some new values onto the scope, returning a new one and
-    /// leaving the original unchanged:
-    fn push(&self, values: HashMap<String,Expression>) -> Scope {
-        Scope(self.0.push(values))
-    }
-
-    /// push one key and value onto the scope, returning a new one and
-    /// leaving the original unchanged:
-    fn push_one(&self, key: String, value: Expression) -> Scope {
-        let mut map = HashMap::with_capacity(1);
-        map.insert(key, value);
-        self.push(map)
-    }
-}
 
 fn eval_str(text: &str, name: &str) -> Res {
 
@@ -134,29 +99,16 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             }
         },
 
-        /// Func declarations: we need to substitute any variables declared within
-        /// (with the exception of those coming in through the args) with expressions
-        /// on scope at present.
-        Expr::Func{ inputs, output } => {
-
-            // make a scope wherein the function args are preserved as variables,
-            // so that simplifyin only replaces other stuff.
-            let mut input_vars = HashMap::new();
-            for arg in inputs.iter() {
-                let var = Expression{
-                    start: e.start,
-                    end: e.end,
-                    expr: Expr::Var(arg.clone(),vec![])
-                };
-                input_vars.insert(arg.clone(), var);
-            }
-
-            let simplified_output = simplify(*output, scope.push(input_vars))?;
+        /// Func declarations: we want to store the scope that they are seen in
+        /// against the function so that it can be applied against the right things.
+        /// otherwise, leave as is.
+        Expr::Func{ inputs, output, .. } => {
 
             Ok(expression_from!{e,
                 Expr::Func{
                     inputs: inputs,
-                    output: Box::new(simplified_output)
+                    output: output,
+                    scope: scope.clone()
                 }
             })
 
@@ -169,39 +121,17 @@ fn simplify(e: Expression, scope: Scope) -> Res {
             // simplify the func expr, which might at this point be a variable
             // or something. Then, simplify the args.
             let func = simplify(*boxed_expr, scope.clone())?;
-            let mut couldnt_simplify_all = false;
-            let mut simplified_args = vec![];
+            let mut simplified_args = Vec::with_capacity(args.len());
             for arg in args.into_iter() {
-
                 let simplified_arg = simplify(arg, scope.clone())?;
-
-                // simplify didn't fail, but the arg is still a variable,
-                // which means we are simplifying inside a Func, and this
-                // is a variable that doesn't yet have a known value. this
-                // meamns we can't yet simplify further.
-                if let Expr::Var(..) = simplified_arg.expr {
-                    couldnt_simplify_all = true;
-                }
                 simplified_args.push(simplified_arg);
-
-            }
-
-            // simplifying not good enough, so reconstruct and return; at least
-            // we'll have potentially done some work simplifing in this pass.
-            if couldnt_simplify_all {
-                return Ok(expression_from!{e,
-                    Expr::App{
-                        expr: Box::new(func),
-                        args: simplified_args
-                    }
-                });
             }
 
             // now we've simplified the args and the func, see what type of
             // func we are dealing with so that we can apply the args to it
             // and get back a result.
             match func.expr {
-                Expr::Func{ inputs: arg_names, output: func_e} => {
+                Expr::Func{ inputs:arg_names, output:func_e, scope:scope } => {
 
                     if arg_names.len() != simplified_args.len() {
                         return err!(e,WrongNumberOfArguments{
