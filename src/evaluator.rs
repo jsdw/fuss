@@ -4,27 +4,6 @@ use std::collections::HashMap;
 use chomp;
 use parser;
 
-// fn eval_str(text: &str, name: &str) -> Res {
-
-//     let pos = Position::new();
-//     let input = InputPosition::new(text, pos);
-//     let (rest, res) = chomp::run_parser(input, parser::parse);
-
-//     match res {
-//         Ok(expr) => eval(expr, Scope::new()).map_err(|mut e| {
-//             e.file = name.to_owned();
-//             e
-//         }),
-//         Err(err) => Err(Error{
-//             ty: ErrorType::ParseError(err),
-//             file: name.to_owned(),
-//             start: rest.position(),
-//             end: rest.position()
-//         })
-//     }
-
-// }
-
 pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
     use types::Primitive::*;
