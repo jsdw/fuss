@@ -435,10 +435,11 @@ fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
 
     let mut ops = vec![];
     let mut exprs = vec![];
+    let op_chars = ['^','*','-','+','=','<','>','&','|','/'];
 
     let out = {
-        fn is_op_char(c: char) -> bool {
-            c == '.' || c == '+' || c == '-' || c == '*' || c == '/' || c == '<' || c == '=' || c == '>' || c == '^'
+        let is_op_char = |c: char| -> bool {
+            (&op_chars).iter().find(|&a| *a == c).is_some()
         };
         let push_expr = |i: I| -> Output<I,()> {
             let res = parse!{i;
@@ -454,7 +455,7 @@ fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
             let res = parse!{i;
                     skip_spaces();
                 let start_pos = pos();
-                let op = take_while1(is_op_char);
+                let op = take_while1(&is_op_char);
                 let end_pos = pos();
                     skip_spaces();
                 ret (as_string(op),start_pos,end_pos)
@@ -514,7 +515,7 @@ fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
 
 fn get_operator_precedence(op: &str) -> usize {
     match op {
-        "." => 10,
+        "!" => 10,
         "^" => 8,
         "*" | "/" => 7,
         "+" | "-" => 6,
@@ -751,7 +752,7 @@ pub mod tests {
                             1px solid blue;
             border-radius: 10px;
 
-            $more: $lark.$sub1;
+            $more: $lark.sub1;
         }"
         ,
         ".some-class:not(:last-child) {
@@ -759,7 +760,7 @@ pub mod tests {
             $hello: ($a, $b) => $a + $b;
             $another: 2;
             $lark: { $sub1: 2px; };
-            $more: $lark.$sub1;
+            $more: $lark.sub1;
 
             $hello(2px, 5px);
             { border: 1px solid black; { lark: another thing hereee; }}
