@@ -112,7 +112,7 @@ impl fmt::Debug for PrimFunc {
 }
 impl PartialEq for PrimFunc {
     fn eq(&self, other: &PrimFunc) -> bool {
-        false
+        self.0 as *const usize == other.0 as *const usize
     }
 }
 
