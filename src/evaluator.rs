@@ -1,8 +1,6 @@
 use types::*;
 use types::ErrorType::*;
 use std::collections::HashMap;
-use chomp;
-use parser;
 
 pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
@@ -110,7 +108,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
             // func we are dealing with so that we can apply the args to it
             // and get back a result.
             match func.expr {
-                Expr::Func{ inputs:arg_names, output:func_e, scope:scope } => {
+                Expr::Func{ inputs:arg_names, output:func_e, scope } => {
 
                     if arg_names.len() != simplified_args.len() {
                         return err!(e,WrongNumberOfArguments{

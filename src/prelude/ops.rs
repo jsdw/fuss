@@ -3,7 +3,7 @@ use types::Primitive::*;
 use prelude::casting;
 
 /// The "+" operator.
-pub fn add(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn add(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -30,7 +30,7 @@ pub fn add(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// The "-" operator. Needs to handle unary minus or subtract.
-pub fn subtract(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn subtract(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     let len = args.len();
 
@@ -68,7 +68,7 @@ pub fn subtract(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// The "/" operator
-pub fn divide(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn divide(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -89,7 +89,7 @@ pub fn divide(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// The "*" operator
-pub fn multiply(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn multiply(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -110,7 +110,7 @@ pub fn multiply(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// The "^" operator
-pub fn pow(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn pow(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -131,7 +131,7 @@ pub fn pow(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// The unary "!" operator
-pub fn not(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn not(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
@@ -145,7 +145,7 @@ pub fn not(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// "=="
-pub fn equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -159,7 +159,7 @@ pub fn equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// "!="
-pub fn not_equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn not_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -173,7 +173,7 @@ pub fn not_equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// ">"
-pub fn greater_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn greater_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -183,7 +183,7 @@ pub fn greater_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     let a = args.remove(0);
 
     match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a > b)))
         },
         (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
@@ -195,7 +195,7 @@ pub fn greater_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// ">="
-pub fn greater_than_or_equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn greater_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -205,7 +205,7 @@ pub fn greater_than_or_equal(mut args: Vec<Expression>, context: &Context) -> Pr
     let a = args.remove(0);
 
     match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a >= b)))
         },
         (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
@@ -217,7 +217,7 @@ pub fn greater_than_or_equal(mut args: Vec<Expression>, context: &Context) -> Pr
 }
 
 /// "<"
-pub fn less_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn less_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -227,7 +227,7 @@ pub fn less_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     let a = args.remove(0);
 
     match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a < b)))
         },
         (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
@@ -239,7 +239,7 @@ pub fn less_than(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// "<="
-pub fn less_than_or_equal(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn less_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -249,7 +249,7 @@ pub fn less_than_or_equal(mut args: Vec<Expression>, context: &Context) -> PrimR
     let a = args.remove(0);
 
     match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a <= b)))
         },
         (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
@@ -261,7 +261,7 @@ pub fn less_than_or_equal(mut args: Vec<Expression>, context: &Context) -> PrimR
 }
 
 /// "&&"
-pub fn boolean_and(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn boolean_and(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
@@ -279,7 +279,7 @@ pub fn boolean_and(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// "||"
-pub fn boolean_or(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn boolean_or(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });

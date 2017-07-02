@@ -2,7 +2,7 @@ use types::*;
 use types::Primitive::*;
 
 /// cast an expression to a boolean as best we can
-pub fn boolean(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn boolean(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
@@ -15,7 +15,7 @@ pub fn boolean(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 }
 
 /// cast an expression to a string where possible
-pub fn string(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn string(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });

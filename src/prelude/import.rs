@@ -30,8 +30,11 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
         .filter(|&s| s == "" || s == ".")
         .collect::<Vec<&str>>();
 
-    // traverse the starting path based on out import path provided and see where we end up
+    // What path do we start at?
     let mut final_path = if is_absolute { context.root.clone() } else { context.path.clone() };
+    // Remove the filename from it
+    final_path.pop();
+    // Traverse the import path to turn our starting path into our final one.
     for bit in path_bits {
         if bit == ".." {
             final_path.pop();
