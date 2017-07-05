@@ -80,8 +80,57 @@ fn pos<I: Chars>(i: I) -> Output<I,Position> {
 // fn skip_horizontal_spaces<I: Chars>(i: I) -> Output<I,()> {
 //     skip_while(i, |c| c == '\t' || c == ' ').map_err(Error::UnexpectedCharacter)
 // }
+
+fn skip_comment_or_spaces<I: Chars>(i: I) -> Output<I,()> {
+    fn skip_space<I: Chars>(i: I) -> Output<I,()> {
+        parse!{i;
+            token(' ') <|> token('\n') <|> token('\t');
+            ret ()
+        }
+    }
+    fn skip_simple_comment<I: Chars>(i: I) -> Output<I,()> {
+        parse!{i;
+            token('/');
+            token('/');
+            skip_while(|c| c != '\n');
+            token('\n');
+            ret ()
+        }
+    }
+    fn skip_block_comment<I: Chars>(i: I) -> Output<I,()> {
+        fn block_comment_end<I: Chars>(i: I) -> Output<I,()> {
+            parse!{i;
+                token('*');
+                token('/');
+                ret ()
+            }
+        }
+        fn take_until_end<I: Chars>(i: I) -> Output<I,()> {
+            let out: Output<I,Vec<_>> = parse!{
+                many_till(i, |i| any(i).map_err(Error::UnexpectedCharacter), block_comment_end)
+            };
+            out.map(|_| ())
+        }
+        parse!{i;
+            token('/');
+            token('*');
+            take_until_end();
+            ret ()
+        }
+    }
+    fn skip_one_of_the_above<I: Chars>(i: I) -> Output<I,()> {
+        parse!{i;
+            skip_space() <|> skip_block_comment() <|> skip_simple_comment();
+        }
+    }
+
+    parse!{i;
+        skip_many(skip_one_of_the_above)
+    }
+}
+
 fn skip_spaces<I: Chars>(i: I) -> Output<I,()> {
-    skip_while(i, |c| c == '\t' || c == ' ' || c == '\n').map_err(Error::UnexpectedCharacter)
+    skip_comment_or_spaces(i)
 }
 
 fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
@@ -725,11 +774,12 @@ pub mod tests {
     parse_test!{test_css_block using expr;
         ".some-class:not(:last-child) {
 
+            // A comment!
             $hello: ($a, $b) => $a + $b;
             $another: 2;
 
             $lark: {
-                $sub1: 2px;
+                $sub1: 2px; /* another comment! */
             };
 
             $hello(2px, 5px);
@@ -749,7 +799,7 @@ pub mod tests {
             }
 
             -moz-background-color:
-                            1px solid blue;
+                            1px solid blue; // comments everywhere...
             border-radius: 10px;
 
             $more: $lark.sub1;
