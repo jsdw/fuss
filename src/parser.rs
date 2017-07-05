@@ -50,7 +50,6 @@ pub type Output<I,O> = ParseResult<I,O,Error>;
 /// parsers like take_while1 return, into a String.
 fn as_string<B: Buffer<Token=char>>(buf: B) -> String {
     let mut s = String::with_capacity(buf.len());
-
     buf.iterate(|c| s.push(c));
     s
 }
@@ -64,6 +63,12 @@ fn skip_sep_by1<I: Input, E, R, F, N, V>(i: I, mut p: R, mut sep: F) -> ParseRes
           R: FnMut(I) -> ParseResult<I, (), E>,
           F: FnMut(I) -> ParseResult<I, V, N> {
     p(i).then(|i| skip_many(i, |i| sep(i).then(&mut p)))
+}
+fn skip_sep_by<I: Input, E, R, F, N, V>(i: I, p: R, sep: F) -> ParseResult<I, (), E>
+    where E: From<N>,
+          R: FnMut(I) -> ParseResult<I, (), E>,
+          F: FnMut(I) -> ParseResult<I, V, N> {
+    parse!{i; skip_sep_by1(p,sep) <|> (ret ()) }
 }
 
 fn skip_tokens<I: Chars>(i: I, toks: &str) -> Output<I,I::Buffer> {
@@ -135,36 +140,64 @@ fn skip_spaces<I: Chars>(i: I) -> Output<I,()> {
 
 fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
     parse!{i;
-        let key = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
+        let key = many1(css_key_bit);
             token(':');
             skip_spaces();
         let val = many1(css_value_bit);
             skip_spaces();
             token(';');
         ret CSSEntry::KeyVal{
-            key: as_string(key),
+            key: key,
             val: val
         }
     }
 }
 
-fn css_value_bit<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+// TODO: allow css keys to contain ${} exprs.
+fn css_key_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
-        css_value_expr() <|> css_value_string()
+        css_key_string()
     }
 }
-fn css_value_expr<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+fn css_key_string<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
-        css_value_expr_anything() <|> css_value_expr_var()
+        let s = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
+        ret CSSBit::Str(as_string(s))
     }
 }
-fn css_value_expr_var<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+
+fn css_value_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
+    parse!{i;
+        css_expr_anything() <|> css_expr_var() <|> css_value_string()
+    }
+}
+fn css_value_string<I: Chars>(i: I) -> Output<I,CSSBit> {
+    parse!{i;
+        let s = take_while1(|c| c != '$' && c != ';');
+        ret CSSBit::Str(as_string(s))
+    }
+}
+
+// TODO: allow selectors to contain ${} exprs.
+fn css_selector_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
+    parse!{i;
+        css_selector_string()
+    }
+}
+fn css_selector_string<I: Chars>(i: I) -> Output<I,CSSBit> {
+    parse!{i;
+        let s = take_while1(|c| c != ';' && c != '{');
+        ret CSSBit::Str(as_string(s))
+    }
+}
+
+fn css_expr_var<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
         let expr = variable_name_expr();
-        ret CSSValueBit::Expr(expr);
+        ret CSSBit::Expr(expr);
     }
 }
-fn css_value_expr_anything<I: Chars>(i: I) -> Output<I,CSSValueBit> {
+fn css_expr_anything<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
             token('$');
             token('{');
@@ -172,13 +205,7 @@ fn css_value_expr_anything<I: Chars>(i: I) -> Output<I,CSSValueBit> {
         let expr = expr();
             skip_spaces();
             token('}');
-        ret CSSValueBit::Expr(expr)
-    }
-}
-fn css_value_string<I: Chars>(i: I) -> Output<I,CSSValueBit> {
-    parse!{i;
-        let s = take_while1(|c| c != '$' && c != ';');
-        ret CSSValueBit::Str(as_string(s))
+        ret CSSBit::Expr(expr)
     }
 }
 
@@ -222,7 +249,7 @@ fn css_block<I: Chars>(i: I) -> Output<I,Block> {
 
         let mut css_entries = vec![];
         let mut scope = HashMap::new();
-        let res = skip_sep_by1(i, |i| or(i,
+        let res = skip_sep_by(i, |i| or(i,
                 |i| { css_scope_variable(i).map(|(varname,expr)| { scope.insert(varname,expr); }) },
                 |i| { css_entry(i).map(|res| { css_entries.push(res); }) }), skip_spaces);
 
@@ -230,13 +257,13 @@ fn css_block<I: Chars>(i: I) -> Output<I,Block> {
     };
 
     parse!{i;
-        let selector = take_while(|c| c != ';' && c != '{'); // hone what a valid CSS selector can be to reduce chance of miss parsing.
+        let selector = many(css_selector_bit);
             token('{');
             skip_spaces();
         let (css,scope) = push_all();
             skip_spaces();
             token('}');
-        ret Block{ scope:scope, selector:as_string(selector).trim().to_owned(), css:css }
+        ret Block{ scope:scope, selector:selector, css:css }
     }
 }
 
@@ -633,27 +660,27 @@ pub mod tests {
 
     parse_test!{test_css_keyval using css_keyval;
         "-hello-there: you(123,456 );" =>
-            CSSEntry::KeyVal{ key: s("-hello-there"), val: vec![ CSSValueBit::Str(s("you(123,456 )")) ] };
+            CSSEntry::KeyVal{ key: vec![ CSSBit::Str(s("-hello-there")) ], val: vec![ CSSBit::Str(s("you(123,456 )")) ] };
         "-hello-there:you;" =>
-            CSSEntry::KeyVal{ key: s("-hello-there"), val: vec![ CSSValueBit::Str(s("you")) ] };
+            CSSEntry::KeyVal{ key: vec![ CSSBit::Str(s("-hello-there")) ], val: vec![ CSSBit::Str(s("you")) ] };
         "-hello-there: rgb($hello, $b, 2px);" =>
             CSSEntry::KeyVal{
-                key: s("-hello-there"),
+                key: vec![ CSSBit::Str(s("-hello-there")) ],
                 val: vec![
-                    CSSValueBit::Str(s("rgb(")),
-                    CSSValueBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
-                    CSSValueBit::Str(s(", ")),
-                    CSSValueBit::Expr( e(Expr::Var(s("b"),vec![])) ),
-                    CSSValueBit::Str(s(", 2px)")),
+                    CSSBit::Str(s("rgb(")),
+                    CSSBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
+                    CSSBit::Str(s(", ")),
+                    CSSBit::Expr( e(Expr::Var(s("b"),vec![])) ),
+                    CSSBit::Str(s(", 2px)")),
                 ]
             };
         "-hello-there: stuff${ $hello }stuff;" =>
             CSSEntry::KeyVal{
-                key: s("-hello-there"),
+                key: vec![ CSSBit::Str(s("-hello-there")) ],
                 val: vec![
-                    CSSValueBit::Str(s("stuff")),
-                    CSSValueBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
-                    CSSValueBit::Str(s("stuff"))
+                    CSSBit::Str(s("stuff")),
+                    CSSBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
+                    CSSBit::Str(s("stuff"))
                 ]
             };
     }
@@ -771,6 +798,35 @@ pub mod tests {
         "1 + -2 +3"         , "1 + (-2) + 3";
     }
 
+    parse_test!{test_empty_block using expr;
+        ".some-class {
+            /* empty */
+        }"
+        ,
+        ".some-class {}";
+    }
+
+    parse_test!{test_variable_in_block using expr;
+        ".some-class {
+            $hello: 2px;
+        }" ,
+        ".some-class { $hello: 2px; }";
+    }
+
+    parse_test!{test_function_in_block using expr;
+        ".some-class {
+            $hello: ($a, $b) => $a + $b;
+        }" ,
+        ".some-class { $hello: ($a, $b) => $a + $b; }";
+    }
+
+    parse_test!{test_sub_block_in_block using expr;
+        ".some-class {
+            $hello: { };
+        }" ,
+        ".some-class { $hello: { }; }";
+    }
+
     parse_test!{test_css_block using expr;
         ".some-class:not(:last-child) {
 
@@ -792,8 +848,7 @@ pub mod tests {
 
             if true then $hello else $bye;
 
-            & .a-sub-class .more.another,
-            .sub-clas-two {
+            & .a-sub-class .more.another, .sub-clas-two {
                 $subThing: -2px + 4px;
                 color: red;
             }
@@ -816,8 +871,7 @@ pub mod tests {
             { border: 1px solid black; { lark: another thing hereee; }}
             if true then $hello else $bye;
 
-            & .a-sub-class .more.another,
-            .sub-clas-two { color: red; $subThing: -2px + 4px; }
+            & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
         }";

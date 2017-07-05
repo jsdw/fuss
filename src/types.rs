@@ -24,7 +24,7 @@ pub enum Primitive {
 #[derive(PartialEq,Debug,Clone)]
 pub enum CSSEntry {
     Expr(Expression),
-    KeyVal{ key: String, val: Vec<CSSValueBit> }
+    KeyVal{ key: Vec<CSSBit>, val: Vec<CSSBit> }
 }
 
 /// we parse CSS values into pieces, which are either raw strings
@@ -35,7 +35,7 @@ pub enum CSSEntry {
 /// $var.a.b
 /// ${ arbitrary_expr_here }
 #[derive(PartialEq,Debug,Clone)]
-pub enum CSSValueBit {
+pub enum CSSBit {
     Str(String),
     Expr(Expression)
 }
@@ -46,7 +46,7 @@ pub enum CSSValueBit {
 #[derive(PartialEq,Debug,Clone)]
 pub struct Block {
     pub scope: HashMap<String,Expression>,
-    pub selector: String,
+    pub selector: Vec<CSSBit>,
     pub css: Vec<CSSEntry>
 }
 

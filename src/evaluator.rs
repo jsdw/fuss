@@ -160,8 +160,32 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                 let simplified_expr = eval(expr,s,context)?;
                 simplified_block_scope.insert(name, simplified_expr);
             }
-
             let new_scope = scope.push(simplified_block_scope.clone());
+
+            /// This function takes a vector of CSSBits and returns a String.
+            /// We use this to decode the strings+expressions in css keys, values
+            /// and selector.
+            let build_from = |bits: Vec<CSSBit>| -> Result<String,Error> {
+                let mut string = vec![];
+                for bit in bits {
+                    match bit {
+                        CSSBit::Str(s) => string.push(s),
+                        CSSBit::Expr(e) => {
+                            let e = eval(e, new_scope.clone(),context)?;
+                            use prelude::casting::raw_string;
+                            let s = match raw_string(e.expr) {
+                                Ok(s) => Ok(s),
+                                Err(err) => err!{e,err}
+                            }?;
+                            string.push(s);
+                        }
+                    }
+                }
+                Ok(string.concat())
+            };
+
+            /// build up our simplified block now given the above.
+            let selector_string = build_from(block.selector)?;
             let mut blocks = vec![];
             for val in block.css {
                 match val {
@@ -174,22 +198,9 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                         blocks.push( NestedCSSEntry::Block(Box::new(block)) );
                     },
                     CSSEntry::KeyVal{ key, val } => {
-                        let mut strings = vec![];
-                        for bit in val {
-                            match bit {
-                                CSSValueBit::Str(s) => strings.push(s),
-                                CSSValueBit::Expr(e) => {
-                                    let e = eval(e, scope.clone(),context)?;
-                                    use prelude::casting::raw_string;
-                                    let s = match raw_string(e.expr) {
-                                        Ok(s) => Ok(s),
-                                        Err(err) => err!{e,err}
-                                    }?;
-                                    strings.push(s);
-                                }
-                            }
-                        }
-                        blocks.push( NestedCSSEntry::KeyVal{ key:key, val:strings.concat() } );
+                        let key_strings = build_from(key)?;
+                        let val_strings = build_from(val)?;
+                        blocks.push( NestedCSSEntry::KeyVal{ key:key_strings, val:val_strings } );
                     }
                 }
             }
@@ -197,7 +208,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
             Ok(expression_from!{e,
                 Expr::NestedSimpleBlock(NestedSimpleBlock{
                     scope: simplified_block_scope,
-                    selector: block.selector,
+                    selector: selector_string,
                     css: blocks
                 })
             })
