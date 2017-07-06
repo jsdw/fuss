@@ -2,6 +2,7 @@ use types::*;
 use chomp::types::numbering::InputPosition;
 use chomp::prelude::*;
 use chomp::parsers;
+use chomp::combinators::look_ahead;
 
 /// parse takes in some input-like hting (eg a &str), and returns
 /// output which has in it the remaining state of I, and either an
@@ -153,10 +154,9 @@ fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
     }
 }
 
-// TODO: allow css keys to contain ${} exprs.
 fn css_key_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
-        css_key_string()
+        css_key_string() <|> css_expr_anything()
     }
 }
 fn css_key_string<I: Chars>(i: I) -> Output<I,CSSBit> {
@@ -178,17 +178,23 @@ fn css_value_string<I: Chars>(i: I) -> Output<I,CSSBit> {
     }
 }
 
-// TODO: allow selectors to contain ${} exprs.
 fn css_selector_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
-        css_selector_string()
+        css_expr_anything() <|> css_selector_string()
     }
 }
 fn css_selector_string<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        let s = take_while1(|c| c != ';' && c != '{');
-        ret CSSBit::Str(as_string(s))
-    }
+    many_till(i,
+        |i| not_token(i, ';'),
+        |i| look_ahead(i, |i| or(i,
+            |i| token(i, '{'),
+            |i| token(i, '$').then(|i| token(i, '{'))
+        ))
+    ).map_err(|_| Error::UnknownError)
+        .bind(|i,res: String|
+        if res.len() > 0 { i.ret(CSSBit::Str(res)) }
+        else { i.err(Error::UnknownError) }
+    )
 }
 
 fn css_expr_var<I: Chars>(i: I) -> Output<I,CSSBit> {
@@ -199,19 +205,25 @@ fn css_expr_var<I: Chars>(i: I) -> Output<I,CSSBit> {
 }
 fn css_expr_anything<I: Chars>(i: I) -> Output<I,CSSBit> {
     parse!{i;
+        let expr = css_expr_anything_raw();
+        ret CSSBit::Expr(expr)
+    }
+}
+fn css_expr_anything_raw<I: Chars>(i: I) -> Output<I,Expression> {
+    parse!{i;
             token('$');
             token('{');
             skip_spaces();
         let expr = expr();
             skip_spaces();
             token('}');
-        ret CSSBit::Expr(expr)
+        ret expr
     }
 }
 
 fn css_expr<I: Chars>(i: I) -> Output<I,CSSEntry> {
     parse!{i;
-        let e = expr();
+        let e = css_expr_anything_raw();
             skip_spaces();
             token(';');
         ret CSSEntry::Expr(e)
@@ -251,7 +263,8 @@ fn css_block<I: Chars>(i: I) -> Output<I,Block> {
         let mut scope = HashMap::new();
         let res = skip_sep_by(i, |i| or(i,
                 |i| { css_scope_variable(i).map(|(varname,expr)| { scope.insert(varname,expr); }) },
-                |i| { css_entry(i).map(|res| { css_entries.push(res); }) }), skip_spaces);
+                |i| { css_entry(i).map(|res| { css_entries.push(res); }) }),
+            skip_spaces);
 
         res.map(|_| (css_entries,scope))
     };
@@ -788,6 +801,30 @@ pub mod tests {
             });
     }
 
+    fn css_selector<I: Chars>(i: I) -> Output<I,Vec<CSSBit>> {
+        parse!{i;
+            let bits = many1(css_selector_bit);
+            token('{');
+            ret bits
+        }
+    }
+    parse_test!{test_css_selector using css_selector;
+        "hello there {" =>
+            vec![
+                CSSBit::Str(s("hello there "))
+            ];
+        "${ $a }{" =>
+            vec![
+                CSSBit::Expr(e(Expr::Var( s("a"), vec![] )))
+            ];
+        "hello${ $a }there {" =>
+            vec![
+                CSSBit::Str(s("hello")),
+                CSSBit::Expr(e(Expr::Var( s("a"), vec![] ))),
+                CSSBit::Str(s("there "))
+            ];
+    }
+
     parse_test!{test_precedence using expr;
         "1 + 2 + 3"         , "(1 + 2) + 3";
         "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
@@ -801,30 +838,123 @@ pub mod tests {
     parse_test!{test_empty_block using expr;
         ".some-class {
             /* empty */
-        }"
-        ,
-        ".some-class {}";
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![],
+            css: vec![]
+        }));
     }
 
     parse_test!{test_variable_in_block using expr;
         ".some-class {
             $hello: 2px;
-        }" ,
-        ".some-class { $hello: 2px; }";
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![
+                s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
+            ],
+            css: vec![]
+        }));
     }
 
     parse_test!{test_function_in_block using expr;
         ".some-class {
-            $hello: ($a, $b) => $a + $b;
-        }" ,
-        ".some-class { $hello: ($a, $b) => $a + $b; }";
+            $hello: ($a, $b) => true;
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![
+                s("hello") => e(Expr::Func{
+                    inputs: vec![s("a"), s("b")],
+                    scope: Scope::new(),
+                    output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                })
+            ],
+            css: vec![]
+        }));
     }
 
     parse_test!{test_sub_block_in_block using expr;
         ".some-class {
             $hello: { };
-        }" ,
-        ".some-class { $hello: { }; }";
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![
+                s("hello") => e(Expr::Block(Block{
+                    selector: vec![],
+                    scope: hash_map![],
+                    css: vec![]
+                }))
+            ],
+            css: vec![]
+        }));
+    }
+
+    parse_test!{test_expr_in_block using expr;
+        ".some-class {
+            ${ $hello };
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![],
+            css: vec![
+                CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+            ]
+        }));
+    }
+
+    parse_test!{test_fn_and_expr_in_block using expr;
+        ".some-class {
+            $hello: ($a, $b) => true;
+            ${ $hello };
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![
+                s("hello") => e(Expr::Func{
+                    inputs: vec![s("a"), s("b")],
+                    scope: Scope::new(),
+                    output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                })
+            ],
+            css: vec![
+                CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+            ]
+        }));
+    }
+
+    // make sure that a css keyval pair followed by a block isn't mistakenly seen
+    // as a selector + block.
+    parse_test!{test_selector_then_empty_block_in_block using expr;
+        "{
+            border: 1px solid black;
+            {
+                lark: another thing hereee;
+            }
+        }" =>
+        e(Expr::Block(Block{
+            scope: hash_map![],
+            selector: vec![],
+            css: vec![
+                CSSEntry::KeyVal{
+                    key: vec![CSSBit::Str(s("border"))],
+                    val: vec![CSSBit::Str(s("1px solid black"))]
+                },
+                CSSEntry::Expr(e(Expr::Block(Block{
+                    scope: hash_map![],
+                    selector: vec![],
+                    css: vec![
+                        CSSEntry::KeyVal{
+                            key: vec![CSSBit::Str(s("lark"))],
+                            val: vec![CSSBit::Str(s("another thing hereee"))]
+                        }
+                    ]
+                })))
+            ]
+        }));
     }
 
     parse_test!{test_css_block using expr;
@@ -838,7 +968,7 @@ pub mod tests {
                 $sub1: 2px; /* another comment! */
             };
 
-            $hello(2px, 5px);
+            ${ $hello(2px, 5px) };
             {
                 border: 1px solid black;
                 {
@@ -846,7 +976,7 @@ pub mod tests {
                 }
             }
 
-            if true then $hello else $bye;
+            ${ if true then $hello else $bye };
 
             & .a-sub-class .more.another, .sub-clas-two {
                 $subThing: -2px + 4px;
@@ -867,9 +997,9 @@ pub mod tests {
             $lark: { $sub1: 2px; };
             $more: $lark.sub1;
 
-            $hello(2px, 5px);
+            ${ $hello(2px, 5px) };
             { border: 1px solid black; { lark: another thing hereee; }}
-            if true then $hello else $bye;
+            ${ if true then $hello else $bye };
 
             & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;

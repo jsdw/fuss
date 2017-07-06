@@ -46,3 +46,17 @@ macro_rules! scope {
         }
     )
 }
+
+// make defining hash maps a little easier:
+macro_rules! hash_map {
+    ( $($key:expr => $val:expr);+ ) => ({
+        use std::collections::HashMap;
+        let mut map = HashMap::new();
+        $( map.insert($key, $val); )*
+        map
+    });
+    ( ) => ({
+        use std::collections::HashMap;
+        HashMap::new()
+    })
+}
