@@ -21,7 +21,8 @@ impl_rdp! {
 
             block_css = { block_css_key ~ [":"] ~ block_css_value ~ [";"] }
             block_selector = { ( block_interpolated_expression | block_selector_char )+ }
-                block_selector_char = _{ !(["${"] | ["{"]) ~ any }
+                block_selector_char = _{ !(["$"] | ["{"] | [";"] | ["}"]) ~ any }
+
             block_css_key = { (block_interpolated_expression | block_css_key_char)+ }
                 block_css_key_char = _{ ['a'..'z'] | ["-"] }
             block_css_value = { (block_interpolated_expression | variable | block_css_value_chars)+ }
@@ -57,6 +58,9 @@ impl_rdp! {
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
 
         whitespace = _{ ([" "] | ["\n"] | ["\t"] | ["\r"])+ }
+        comment = _{ block_comment | eol_comment }
+            block_comment = _{ ["/*"] ~ (block_comment | !(block_comment | ["*/"]) ~ any)* ~ ["*/"] }
+            eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
 
         minus = { ["-"] }
         negate = { ["!"] }
@@ -106,7 +110,7 @@ mod test {
                 let mut parser = Rdp::new(StringInput::new($input));
 
                 if !parser.$token(){
-                    writeln!(&mut $errors, "ERROR: could not parse!\n - wants: {:?}\n - input: \n{}\n - expected: {:?}", parser.expected(), s, Rule::$token);
+                    writeln!(&mut $errors, "ERROR: could not parse!\n - wants: {:?}\n - input: \n{}\n - expected: {:?}\n - got: {:?}", parser.expected(), s, Rule::$token, parser.queue());
                 }
                 else if !parser.end() {
                     writeln!(&mut $errors, "ERROR: didn't end when expected!\n - wants: {:?}\n - input: \n{}\n - expected: {:?}\n - got: {:?}", parser.expected(), s, Rule::$token, parser.queue());
@@ -200,10 +204,13 @@ mod test {
     parse_test!{test_block_assignment;
         "$hello: 2px;" => block_assignment;
         "$hello: ($a, $b) => $a + $b;" => block_assignment;
+        "$hello: {};" => block_assignment;
     }
 
     parse_test!{test_block_with_css_only;
         "{}" => block;
+        ".stuff {}" => block;
+        ".stuff {}" => expression;
         "{ hello: there; }" => block;
         "{ ${ $hello }: there; }" => block;
         "{ ${ $hello }: the${ 2px }re; }" => block;
@@ -231,11 +238,15 @@ mod test {
             $another: 2;
             $lark: { $sub1: 2px; };
             $more: $lark.sub1;
+            /* block /* nested!! */ comment */
 
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
         }" => block;
         ".some-class:not(:last-child) {
+            // a comment till end of line
+            // lark
+            // woop
             & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
