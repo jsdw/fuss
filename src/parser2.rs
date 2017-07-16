@@ -1,15 +1,16 @@
 use pest::prelude::*;
+use types::*;
 
 impl_rdp! {
     grammar! {
         expression = {
             { block | string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor }
-            infix0 = { or }
-            infix1 = { and }
-            infix2 = { equal | not_equal | gt_or_equal | lt_or_equal | gt | lt }
-            infix3 = { plus | minus }
-            infix4 = { times | slash }
-            infix5 = {< pow }
+            infix0 = { ["||"] }
+            infix1 = { ["&&"] }
+            infix2 = { ["=="] | ["!="] | [">="] | ["<="] | [">"] | ["<"] }
+            infix3 = { ["+"] | ["-"] }
+            infix4 = { ["*"] | ["/"] }
+            infix5 = {< ["^"] }
         }
 
         block = { block_selector? ~ ["{"] ~ (block_assignment | block_css | block_expression | block )* ~ ["}"] }
@@ -31,7 +32,7 @@ impl_rdp! {
         application = { prefix_application | function_application }
 
             prefix_application = @{ prefix_application_fn ~ prefix_application_args }
-            prefix_application_fn = { minus | negate }
+            prefix_application_fn = { ["-"] | ["!"] }
             prefix_application_args = !@{ paren_expression | function_application | variable_accessor }
 
             function_application = { function_application_fn ~ ["("] ~ function_application_args ~ [")"] }
@@ -62,21 +63,61 @@ impl_rdp! {
             block_comment = _{ ["/*"] ~ (block_comment | !(block_comment | ["*/"]) ~ any)* ~ ["*/"] }
             eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
 
-        minus = { ["-"] }
-        negate = { ["!"] }
-        plus = { ["+"] }
-        times = { ["*"] }
-        slash = { ["/"] }
-        pow = { ["^"] }
-        equal = { ["=="] }
-        not_equal = { ["!="] }
-        gt = { [">"] }
-        lt = { ["<"] }
-        lt_or_equal = { ["<="] }
-        gt_or_equal = { [">="] }
-        and = { ["&&"] }
-        or = { ["||"] }
+    }
 
+    process!{
+        main(&self) -> Expression {
+            (rule:infix0, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            },
+            (rule:infix1, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            },
+            (rule:infix2, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            },
+            (rule:infix3, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            },
+            (rule:infix4, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            },
+            (rule:infix5, expr:_infix()) => {
+                Expression{
+                    start: rule.start,
+                    end: rule.end,
+                    expr: expr
+                }
+            }
+        }
+        _infix(&self) -> Expr {
+            (left: main(), &sign:sign, right: main()) => {
+                Expr::App{
+                    expr: Box::new(Expr::Var(sign.to_owned(), vec![])),
+                    args: vec![ left, right ]
+                }
+            }
+        }
     }
 }
 
@@ -102,10 +143,9 @@ mod test {
 
         ( __SINGLE ($errors:ident) ) => ();
 
-        // str => variable
-        (__SINGLE ($errors:ident) $input:expr => $token:ident; $($rest:tt)* ) => (
+        // str => variable[ child, child.. ]
+        ( __SINGLE ($errors:ident) $input:expr => $token:ident[ $($inner:ident $children:tt),* ]; $($rest:tt)* ) => (
             {
-
                 let s = $input.to_owned();
                 let mut parser = Rdp::new(StringInput::new($input));
 
@@ -118,121 +158,119 @@ mod test {
                 else {
                     assert_eq!(s.len(), parser.queue()[0].end);
                 }
-                //println!("DEBUG: parse result: \n - input: {:?}\n - expected: {:?}\n - got: {:?}", s, Rule::$token, parser.queue())
-
             }
             parse_test!{ __SINGLE ($errors) $($rest)* }
-        )
+        );
 
     }
 
     parse_test!{test_variable;
-        "$hello" => variable;
-        "$2ello" => variable;
-        "$_hello" => variable;
-        "$hello" => expression;
-        "$2ello" => expression;
-        "$_hello" => expression;
+        "$hello" => variable[];
+        "$2ello" => variable[];
+        "$_hello" => variable[];
+        "$hello" => expression[];
+        "$2ello" => expression[];
+        "$_hello" => expression[];
     }
 
     parse_test!{test_numeric;
-        "20" => number;
-        "-20" => number;
-        "0.12" => number;
-        "100.0" => number;
-        "100.0px" => unit;
-        "100.0em" => unit;
-        "0%" => unit;
-        "100.0px" => expression;
-        "100.0em" => expression;
-        "0%" => expression;
+        "20" => number[];
+        "-20" => number[];
+        "0.12" => number[];
+        "100.0" => number[];
+        "100.0px" => unit[];
+        "100.0em" => unit[];
+        "0%" => unit[];
+        "100.0px" => expression[];
+        "100.0em" => expression[];
+        "0%" => expression[];
     }
 
     parse_test!{test_if_then_else;
-        "if true then  true \nelse true" => if_then_else;
-        "if 20px then 10 else 100" => if_then_else;
-        "if true then true else true" => expression;
-        "if 20px then 10 else 100" => expression;
+        "if true then  true \nelse true" => if_then_else[];
+        "if 20px then 10 else 100" => if_then_else[];
+        "if true then true else true" => expression[];
+        "if 20px then 10 else 100" => expression[];
     }
 
     parse_test!{test_strings;
-        r#""hello there""# => string;
-        r#""hello \"hello\" there""# => string;
-        r#""hello there""# => expression;
-        r#""hello \"hello\" there""# => expression;
+        r#""hello there""# => string[];
+        r#""hello \"hello\" there""# => string[];
+        r#""hello there""# => expression[];
+        r#""hello \"hello\" there""# => expression[];
     }
 
     parse_test!{test_functions;
-        "() => true" => function;
-        "($lark, $another) => $lark" => function;
+        "() => true" => function[];
+        "($lark, $another) => $lark" => function[];
     }
 
     parse_test!{test_operators;
-        "20 + 40" => expression;
-        "20 / 40" => expression;
-        "20 * 40" => expression;
-        "20 - 40" => expression;
+        "20 + 40" => expression[];
+        "20 / 40" => expression[];
+        "20 * 40" => expression[];
+        "20 - 40" => expression[];
     }
 
     parse_test!{test_func_applications;
-        "$hello(2px,true)" => expression;
-        "$hello(2px, true)" => expression;
-        "$hello(2px, true)" => application;
-        "!$hello" => expression;
-        "!($hello)" => expression;
-        "!$hello()" => expression;
-        "!($hello())" => expression;
-        "!$hello(2px)" => expression;
-        "!($hello(2px))" => expression;
-        "!($hello(2px, true))" => expression;
-        "!$hello(2px, true)" => expression;
-        "!$hello()" => application;
-        "!$hello(1px)" => application;
-        "!$hello(1px, true)" => application;
-        "!($hello)" => application;
-        "!($hello())" => application;
-        "!($hello(1px))" => application;
-        "!($hello(1px, true))" => application;
+        "$hello(2px,true)" => expression[];
+        "$hello(2px, true)" => expression[];
+        "$hello(2px, true)" => application[];
+        "!$hello" => expression[];
+        "!($hello)" => expression[];
+        "!$hello()" => expression[];
+        "!($hello())" => expression[];
+        "!$hello(2px)" => expression[];
+        "!($hello(2px))" => expression[];
+        "!($hello(2px, true))" => expression[];
+        "!$hello(2px, true)" => expression[];
+        "!$hello()" => application[];
+        "!$hello(1px)" => application[];
+        "!$hello(1px, true)" => application[];
+        "!($hello)" => application[];
+        "!($hello())" => application[];
+        "!($hello(1px))" => application[];
+        "!($hello(1px, true))" => application[];
     }
 
     parse_test!{test_block_css;
-        "hello: there;" => block_css;
-        "${ $hello }: there;" => block_css;
-        "${ $hello }: the${ 2px }re;" => block_css;
+        "hello: there;" => block_css[];
+        "${ $hello }: there;" => block_css[];
+        "${ $hello }: the${ 2px }re;" => block_css[];
     }
 
     parse_test!{test_block_assignment;
-        "$hello: 2px;" => block_assignment;
-        "$hello: ($a, $b) => $a + $b;" => block_assignment;
-        "$hello: {};" => block_assignment;
+        "$hello: 2px;" => block_assignment[];
+        "$hello: ($a, $b) => $a + $b;" => block_assignment[];
+        "$hello: {};" => block_assignment[];
     }
 
     parse_test!{test_block_with_css_only;
-        "{}" => block;
-        ".stuff {}" => block;
-        ".stuff {}" => expression;
-        "{ hello: there; }" => block;
-        "{ ${ $hello }: there; }" => block;
-        "{ ${ $hello }: the${ 2px }re; }" => block;
+        "{}" => block[];
+        ".stuff {}" => block[];
+        ".stuff {}" => expression[];
+        "{ hello: there; }" => block[];
+        "{ ${ $hello }: there; }" => block[];
+        "{ ${ $hello }: the${ 2px }re; }" => block[];
     }
 
     parse_test!{test_block_more;
-        "{ $hello: 1px; ${ $hello }: the${ 2px }re; }" => block;
-        ".some-selector value here::after { $hello: 1px; ${ $hello }: the${ 2px }re; }" => block;
-        ".some-selector value here::after { $hello: 1px; -hello-${ $world }: the${ 2px }re; }" => block;
-        ".some-class:not(:last-child) {}" => block;
+        "{ $hello: 1px; ${ $hello }: the${ 2px }re; }" => block[];
+        ".some-selector value here::after { $hello: 1px; ${ $hello }: the${ 2px }re; }" => block[];
+        ".some-selector value here::after { $hello: 1px; -hello-${ $world }: the${ 2px }re; }" => block[];
+        ".some-class:not(:last-child) {}" => block[];
         ".some-class:not(:last-child) {
             $hello: ($a, $b) => $a + $b;
             $another: 2;
             $lark: { $sub1: 2px; };
             $more: $lark.sub1;
-        }" => block;
+        }" => block[];
         ".some-class:not(:last-child) {
             ${ $hello(2px, 5px) };
-        }" => block;
+        }" => block[];
         ".some-class:not(:last-child) {
             $hello;
-        }" => block;
+        }" => block[];
         ".some-class:not(:last-child) {
             $hello: ($a, $b) => $a + $b;
             $another: 2;
@@ -242,7 +280,7 @@ mod test {
 
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
-        }" => block;
+        }" => block[];
         ".some-class:not(:last-child) {
             // a comment till end of line
             // lark
@@ -250,9 +288,9 @@ mod test {
             & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
-        }" => block;
-        "{ $lark: {}; .stuff {} }" => block;
-        "{ .stuff {} $lark: {}; }" => block;
+        }" => block[];
+        "{ $lark: {}; .stuff {} }" => block[];
+        "{ .stuff {} $lark: {}; }" => block[];
     }
 
 }
