@@ -1,5 +1,6 @@
 use pest::prelude::*;
 use types::*;
+use std::collections::LinkedList;
 
 impl_rdp! {
     grammar! {
@@ -47,14 +48,16 @@ impl_rdp! {
         function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ expression }
             function_args = _{ variable ~ ( [","] ~ variable )* }
 
-        variable_name = _{ (['a'..'z'] | ['A'..'Z'] | ["_"] | ['0'..'9'])+ }
-        boolean = { ["true"] | ["false"] }
+        variable_name = { (['a'..'z'] | ['A'..'Z'] | ["_"] | ['0'..'9'])+ }
+        boolean = { boolean_true | boolean_false }
+            boolean_true = { ["true"] }
+            boolean_false = { ["false"] }
 
         string  = @{ ["\""] ~ string_contents ~ ["\""] }
-            string_contents = _{ (escaped_char | !(["\""] | ["\\"]) ~ any)* }
+            string_contents = { (escaped_char | !(["\""] | ["\\"]) ~ any)* }
             escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"] | ["/"] | ["b"] | ["f"] | ["n"] | ["r"] | ["t"]) }
 
-        unit = @{ number ~ number_suffix? }
+        unit = @{ number ~ number_suffix }
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
 
@@ -67,57 +70,94 @@ impl_rdp! {
 
     process!{
         main(&self) -> Expression {
-            (rule:infix0, expr:_infix()) => {
+            (rule:expression, expr:_expr()) => {
                 Expression{
-                    start: rule.start,
-                    end: rule.end,
-                    expr: expr
-                }
-            },
-            (rule:infix1, expr:_infix()) => {
-                Expression{
-                    start: rule.start,
-                    end: rule.end,
-                    expr: expr
-                }
-            },
-            (rule:infix2, expr:_infix()) => {
-                Expression{
-                    start: rule.start,
-                    end: rule.end,
-                    expr: expr
-                }
-            },
-            (rule:infix3, expr:_infix()) => {
-                Expression{
-                    start: rule.start,
-                    end: rule.end,
-                    expr: expr
-                }
-            },
-            (rule:infix4, expr:_infix()) => {
-                Expression{
-                    start: rule.start,
-                    end: rule.end,
-                    expr: expr
-                }
-            },
-            (rule:infix5, expr:_infix()) => {
-                Expression{
-                    start: rule.start,
-                    end: rule.end,
+                    start: Position(rule.start),
+                    end: Position(rule.end),
                     expr: expr
                 }
             }
         }
+        _expr(&self) -> Expr {
+            (rule:expression, expr:_expr()) => expr,
+            (rule:infix0, expr:_infix()) => expr,
+            (rule:infix1, expr:_infix()) => expr,
+            (rule:infix2, expr:_infix()) => expr,
+            (rule:infix3, expr:_infix()) => expr,
+            (rule:infix4, expr:_infix()) => expr,
+            (rule:infix5, expr:_infix()) => expr,
+            (rule:function, expr:_function()) => expr,
+            (rule:if_then_else, expr:_if_then_else()) => expr,
+            (rule:application, expr:_application()) => expr,
+            // primitives:
+            (rule:string, &s:string_contents) => Expr::Prim(Primitive::Str(s.to_owned())),
+            (rule:unit, &n:number, &s:number_suffix) => Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() )),
+            (rule:boolean, _:boolean_true) => Expr::Prim(Primitive::Bool(true)),
+            (rule:boolean, _:boolean_false) => Expr::Prim(Primitive::Bool(false)),
+        }
         _infix(&self) -> Expr {
-            (left: main(), &sign:sign, right: main()) => {
+            (left:main(), sign:_symbol(), right:main()) => {
                 Expr::App{
-                    expr: Box::new(Expr::Var(sign.to_owned(), vec![])),
+                    expr: Box::new(sign),
                     args: vec![ left, right ]
                 }
             }
         }
+        _symbol(&self) -> Expression {
+            (sign) => {
+                let tok = self.input().slice(sign.start,sign.end);
+                Expression{
+                    start: Position(sign.start),
+                    end: Position(sign.end),
+                    expr: Expr::Var(tok.to_owned(), vec![])
+                }
+            }
+        }
+        _function(&self) -> Expr {
+            (args:_function_args(), expr:main()) => {
+                let arg_vec = args.into_iter().collect::<Vec<String>>();
+                Expr::Func{
+                    inputs: arg_vec,
+                    output: Box::new(expr),
+                    scope: Scope::new()
+                }
+            }
+        }
+        _function_args(&self) -> LinkedList<String> {
+            (_: variable, &name:variable_name, mut tail: _function_args()) => {
+                tail.push_front(name.to_owned());
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _if_then_else(&self) -> Expr {
+            (cond: main(), then: main(), otherwise: main()) => {
+                Expr::If{
+                    cond: Box::new(cond),
+                    then: Box::new(then),
+                    otherwise: Box::new(otherwise)
+                }
+            }
+        }
+        _application(&self) -> Expr {
+            (_:prefix_application, sign:_symbol(), _:prefix_application_args, arg:main()) => {
+                Expr::App{
+                    expr: Box::new(sign),
+                    args: vec![arg]
+                }
+            }
+        }
+        // _application_args(&self) -> LinkedList<Expression> {
+        //     (_: variable, &name:variable_name, mut tail: _function_args()) => {
+        //         tail.push_front(name.to_owned());
+        //         tail
+        //     },
+        //     () => {
+        //         LinkedList::new()
+        //     }
+        // }
     }
 }
 

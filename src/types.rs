@@ -160,20 +160,12 @@ pub struct Context {
     pub root: PathBuf
 }
 
-/// a line and column number denoting a position in some text:
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub struct Position {
-    pub line: u64,
-    pub col: u64
-}
+#[derive(Copy,Clone,Debug,PartialEq)]
+pub struct Position(pub usize);
+
 impl Position {
     pub fn new() -> Position {
-        Position{line: 0, col: 0}
-    }
-}
-impl Default for Position {
-    fn default() -> Self {
-        Position::new()
+        Position(0)
     }
 }
 
@@ -184,26 +176,13 @@ impl Numbering for Position {
     type Token = char;
 
     fn update<B>(&mut self, b: &B) where B: Buffer<Token=Self::Token> {
-        let mut col = 0;
-        let mut line = 0;
-
         b.iterate(|c| {
-            if c == '\n' { line += 1; col = 0; }
-            else { col += 1 }
+            self.0 += 1
         });
-
-        self.line += line;
-        if line != 0 { self.col = col; }
-        else { self.col += col; }
     }
 
     fn add(&mut self, t: Self::Token) {
-        if t == '\n' {
-            self.line += 1;
-            self.col = 0;
-        } else {
-            self.col += 1;
-        }
+        self.0 += 1;
     }
 }
 

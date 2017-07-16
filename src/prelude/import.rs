@@ -49,12 +49,11 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(final_path.clone()))?;
 
     // try to parse and eval the contents:
-    let pos = Position::new();
     let context = Context{
         path: final_path.clone(),
         root: context.root.clone()
     };
-    let input = InputPosition::new(&*file_contents, pos);
+    let input = InputPosition::new(&*file_contents, Position::new());
     let (rest, res) = chomp::run_parser(input, parser::parse);
 
     // catch and add proper error context to parse or eval errors:
