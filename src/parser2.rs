@@ -1,6 +1,6 @@
 use pest::prelude::*;
 use types::*;
-use std::collections::LinkedList;
+use std::collections::{LinkedList,HashMap};
 
 impl_rdp! {
     grammar! {
@@ -14,21 +14,22 @@ impl_rdp! {
             infix5 = {< ["^"] }
         }
 
-        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression | block )* ~ ["}"] }
+        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression )* ~ ["}"] }
 
-            block_expression = { (block_interpolated_expression | variable) ~ [";"] }
+            block_expression = { (block_interpolated_expression | variable) ~ [";"] | block_nested }
+            block_nested = { block }
             block_interpolated_expression = { ["${"] ~ expression ~ ["}"] }
             block_assignment = { block_variable_assign ~ expression ~ [";"] }
                 block_variable_assign = @{ variable ~ [":"] }
 
             block_css = { block_css_key ~ [":"] ~ block_css_value ~ [";"] }
-            block_selector = { ( block_interpolated_expression | block_selector_char )* }
-                block_selector_char = _{ !(["$"] | ["{"] | [";"] | ["}"]) ~ any }
+            block_selector = { ( block_interpolated_expression | block_selector_chars )* }
+                block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
 
-            block_css_key = { (block_interpolated_expression | block_css_key_char)+ }
-                block_css_key_char = _{ ['a'..'z'] | ["-"] }
+            block_css_key = { (block_interpolated_expression | block_css_key_chars)+ }
+                block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
             block_css_value = { (block_interpolated_expression | variable | block_css_value_chars)+ }
-                block_css_value_chars = _{ !(block_interpolated_expression | variable | [";"]) ~ any }
+                block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"]) ~ any )+ }
 
         application = { prefix_application | function_application }
 
@@ -77,7 +78,16 @@ impl_rdp! {
                     end: Position(rule.end),
                     expr: expr
                 }
-            }
+            },
+            // TODO check everyting that calls main and work out how to make them all happy,
+            //      since half of them don't expect "expression" next but some token after it.
+            // (expr:_expr()) => {
+            //     Expression{
+            //         start: Position(rule.start),
+            //         end: Position(rule.end),
+            //         expr: expr
+            //     }
+            // }
         }
         _expr(&self) -> Expr {
             (rule:expression, expr:_expr()) => expr,
@@ -91,6 +101,7 @@ impl_rdp! {
             (rule:if_then_else, expr:_if_then_else()) => expr,
             (rule:application, expr:_application()) => expr,
             (rule:variable_accessor, expr:_variable_accessor()) => expr,
+            (rule:block, expr:_block()) => expr,
             // primitives:
             (rule:string, &s:string_contents) => Expr::Prim(Primitive::Str(s.to_owned())),
             (rule:unit, &n:number, &s:number_suffix) => Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() )),
@@ -98,14 +109,14 @@ impl_rdp! {
             (rule:boolean, _:boolean_false) => Expr::Prim(Primitive::Bool(false)),
         }
         _infix(&self) -> Expr {
-            (left:main(), sign:_symbol(), right:main()) => {
+            (left:main(), sign:_variable_expression(), right:main()) => {
                 Expr::App{
                     expr: Box::new(sign),
                     args: vec![ left, right ]
                 }
             }
         }
-        _symbol(&self) -> Expression {
+        _variable_expression(&self) -> Expression {
             (sign) => {
                 let tok = self.input().slice(sign.start,sign.end);
                 Expression{
@@ -144,7 +155,7 @@ impl_rdp! {
             }
         }
         _application(&self) -> Expr {
-            (_:prefix_application, sign:_symbol(), _:prefix_application_arg, arg:main()) => {
+            (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:main()) => {
                 Expr::App{
                     expr: Box::new(sign),
                     args: vec![arg]
@@ -180,7 +191,108 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
+        _block(&self) -> Expr {
+            (selector:_block_selector(), rest:_block_inner()) => {
+                let selector = selector.into_iter().collect::<Vec<CSSBit>>();
+                let mut scope = HashMap::new();
+                let mut css = vec![];
+                for val in rest.into_iter() {
+                    match val {
+                        BlockInner::Scope(key,val) => {
+                            scope.insert(key,val);
+                        },
+                        BlockInner::CSS(entry) => {
+                            css.push(entry);
+                        }
+                    }
+                }
+                Expr::Block(Block{scope:scope,css:css,selector:selector})
+            }
+        }
+        _block_selector(&self) -> LinkedList<CSSBit> {
+            (&chars:block_selector_chars, mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            (_:block_interpolated_expression, expr:main(), mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block_inner(&self) -> LinkedList<BlockInner> {
+            (_:block_assignment, _:block_variable_assign, &var:variable, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::Scope(var.to_owned(),expr) );
+                tail
+            },
+            (_:block_expression, _:block_interpolated_expression, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_expression, _:variable, expr:_variable_expression(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_expression, _:block_nested, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_css, entry:_block_css(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( entry ) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block_css(&self) -> CSSEntry {
+            (key:_block_css_key(), val:_block_css_val()) => {
+                CSSEntry::KeyVal{
+                    key: key.into_iter().collect::<Vec<CSSBit>>(),
+                    val: val.into_iter().collect::<Vec<CSSBit>>()
+                }
+            }
+        }
+        _block_css_key(&self) -> LinkedList<CSSBit> {
+            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (&chars:block_css_key_chars, mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block_css_val(&self) -> LinkedList<CSSBit> { //TODO: FILL IN!
+            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (_:variable, var:_variable_expression(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(var) );
+                tail
+            },
+            (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
     }
+}
+
+// a quick struct to let us build up a linkedlist of block inner pieces:
+#[derive(Clone,Debug,PartialEq)]
+enum BlockInner {
+    Scope(String,Expression),
+    CSS(CSSEntry)
 }
 
 #[cfg(test)]
