@@ -6,7 +6,6 @@
 
 mod macros;
 
-mod parser2;
 mod parser;
 mod types;
 mod evaluator;

@@ -3,8 +3,7 @@ use types::Primitive::*;
 use std::fs::File;
 use std::io::Read;
 use evaluator::eval;
-use parser;
-use chomp;
+use parser::parse;
 
 /// cast an expression to a boolean as best we can
 pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
@@ -53,25 +52,23 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
         path: final_path.clone(),
         root: context.root.clone()
     };
-    let input = InputPosition::new(&*file_contents, Position::new());
-    let (rest, res) = chomp::run_parser(input, parser::parse);
 
-    // catch and add proper error context to parse or eval errors:
-    let expr = match res {
+    // let res = parse(&input);
+    let res = match parse(&file_contents) {
         Ok(expr) => eval(expr, Scope::new(), &context).map_err(|mut e| {
             e.file = final_path;
             e
         }),
         Err(err) => Err(Error{
-            ty: ErrorType::ParseError(err),
+            ty: err,
             file: final_path,
-            start: rest.position(),
-            end: rest.position()
+            start: Position::new(),
+            end: Position::new()
         })
     };
 
     // return either the Expr or an ImportError which wraps the import issue.
-    expr.map_err(|e| ErrorType::ImportError(Box::new(e)))
+    res.map_err(|e| ErrorType::ImportError(Box::new(e)))
         .map(|e| e.expr)
 
 }

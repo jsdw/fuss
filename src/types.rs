@@ -4,7 +4,6 @@ use chomp::types::Buffer;
 use list::List;
 use std::path::PathBuf;
 use std::fmt;
-use parser;
 
 //re-export this:
 pub use chomp::types::numbering::InputPosition;
@@ -200,7 +199,7 @@ pub struct Error {
 
 #[derive(PartialEq,Debug)]
 pub enum ErrorType {
-    ParseError(parser::Error),
+    NotAnExpression,
     CantFindVariable(String),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},

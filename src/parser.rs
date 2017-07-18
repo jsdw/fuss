@@ -1,1010 +1,538 @@
+use pest::prelude::*;
 use types::*;
-use chomp::types::numbering::InputPosition;
-use chomp::prelude::*;
-use chomp::parsers;
-use chomp::combinators::look_ahead;
+use std::collections::{LinkedList,HashMap};
 
-/// parse takes in some input-like hting (eg a &str), and returns
-/// output which has in it the remaining state of I, and either an
-/// Expression or an error depending on success.
-pub fn parse<I: Chars>(i: I) -> Output<I,Expression> {
-    expr(i)
-}
+// parse a string into an expression
+pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
-#[derive(PartialEq,Eq,Debug)]
-pub enum Error {
-    UnexpectedCharacter(parsers::Error<char>),
-    UnknownError
-}
+    let mut parser = Rdp::new(StringInput::new(input));
 
-impl From<parsers::Error<char>> for Error {
-    fn from(e: parsers::Error<char>) -> Error {
-        Error::UnexpectedCharacter(e)
+    if !parser.expression() {
+        return Err(ErrorType::NotAnExpression)
     }
+    Ok(parser.main())
+
 }
-impl From<()> for Error {
-    fn from(_: ()) -> Error {
-        Error::UnknownError
+
+// turn a Token + Expr into an Expression:
+fn expression(rule: Token<Rule>, expr: Expr) -> Expression {
+    Expression{
+        start: Position(rule.start),
+        end: Position(rule.end),
+        expr: expr
     }
 }
 
-/// describe how to get a Position:
-pub trait Positioned {
-    fn get_position(&self) -> Position;
-}
-impl <I: Input<Token=char>> Positioned for InputPosition<I,Position> {
-    fn get_position(&self) -> Position {
-        self.position()
-    }
-}
-impl<'a> Positioned for &'a str {
-    fn get_position(&self) -> Position {
-        Position::new()
-    }
+// a quick struct to let us build up a linkedlist of block inner pieces:
+#[derive(Clone,Debug,PartialEq)]
+enum BlockInner {
+    Scope(String,Expression),
+    CSS(CSSEntry)
 }
 
-pub trait Chars: Input<Token=char> + Positioned {}
-impl <I: Input<Token=char> + Positioned> Chars for I {}
-pub type Output<I,O> = ParseResult<I,O,Error>;
-
-/// convert a buffer of the sort Chars uses, and thus which
-/// parsers like take_while1 return, into a String.
-fn as_string<B: Buffer<Token=char>>(buf: B) -> String {
-    let mut s = String::with_capacity(buf.len());
-    buf.iterate(|c| s.push(c));
-    s
-}
-
-const VAR_PREFIX: char = '$';
-
-/// like sep_by1 except we ignore the result; this is useful for side effects, like
-/// collecting items up that match, without accumulating a vector of matches we'll ignore.
-fn skip_sep_by1<I: Input, E, R, F, N, V>(i: I, mut p: R, mut sep: F) -> ParseResult<I, (), E>
-    where E: From<N>,
-          R: FnMut(I) -> ParseResult<I, (), E>,
-          F: FnMut(I) -> ParseResult<I, V, N> {
-    p(i).then(|i| skip_many(i, |i| sep(i).then(&mut p)))
-}
-fn skip_sep_by<I: Input, E, R, F, N, V>(i: I, p: R, sep: F) -> ParseResult<I, (), E>
-    where E: From<N>,
-          R: FnMut(I) -> ParseResult<I, (), E>,
-          F: FnMut(I) -> ParseResult<I, V, N> {
-    parse!{i; skip_sep_by1(p,sep) <|> (ret ()) }
-}
-
-fn skip_tokens<I: Chars>(i: I, toks: &str) -> Output<I,I::Buffer> {
-    let chars = toks.chars().collect::<Vec<char>>();
-    string(i, &chars).map_err(Error::UnexpectedCharacter)
-}
-
-/// Get the current position of the input:
-fn pos<I: Chars>(i: I) -> Output<I,Position> {
-    let pos = i.get_position();
-    i.ret(pos).map_err(|()| Error::UnknownError)
-}
-
-// fn skip_horizontal_spaces<I: Chars>(i: I) -> Output<I,()> {
-//     skip_while(i, |c| c == '\t' || c == ' ').map_err(Error::UnexpectedCharacter)
-// }
-
-fn skip_comment_or_spaces<I: Chars>(i: I) -> Output<I,()> {
-    fn skip_space<I: Chars>(i: I) -> Output<I,()> {
-        parse!{i;
-            token(' ') <|> token('\n') <|> token('\t');
-            ret ()
+impl_rdp! {
+    grammar! {
+        expression = {
+            { block | string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor }
+            infix0 = { ["||"] }
+            infix1 = { ["&&"] }
+            infix2 = { ["=="] | ["!="] | [">="] | ["<="] | [">"] | ["<"] }
+            infix3 = { ["+"] | ["-"] }
+            infix4 = { ["*"] | ["/"] }
+            infix5 = {< ["^"] }
         }
+
+        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression )* ~ ["}"] }
+
+            block_expression = { (block_interpolated_expression | variable) ~ [";"] | block_nested }
+            block_nested = { block }
+            block_interpolated_expression = { ["${"] ~ expression ~ ["}"] }
+            block_assignment = { block_variable_assign ~ expression ~ [";"] }
+                block_variable_assign = @{ variable ~ [":"] }
+
+            block_css = { block_css_key ~ [":"] ~ block_css_value ~ [";"] }
+            block_selector = { ( block_interpolated_expression | block_selector_chars )* }
+                block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
+
+            block_css_key = { (block_interpolated_expression | block_css_key_chars)+ }
+                block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
+            block_css_value = { (block_interpolated_expression | variable | block_css_value_chars)+ }
+                block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"]) ~ any )+ }
+
+        application = { prefix_application | function_application }
+
+            prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
+            prefix_application_fn = { ["-"] | ["!"] }
+            prefix_application_arg = !@{ paren_expression | function_application | variable_accessor }
+
+            function_application = { function_application_fn ~ ["("] ~ function_application_args ~ [")"] }
+            function_application_fn = { variable_accessor | paren_expression }
+            function_application_args = { ( function_application_arg ~ ([","] ~ function_application_arg)* )? }
+            function_application_arg = { expression }
+
+        paren_expression = { ["("] ~ expression ~ [")"] }
+        variable = @{ ["$"] ~ variable_name }
+        variable_accessor = { variable ~ ( ["."] ~ variable_name )* }
+        if_then_else = { ["if"] ~ expression ~ ["then"] ~ expression ~ ["else"] ~ expression }
+
+        function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ expression }
+            function_args = { variable ~ ( [","] ~ variable )* }
+            function_expression = { expression }
+
+        variable_name = { (['a'..'z'] | ['A'..'Z'] | ["_"] | ['0'..'9'])+ }
+        boolean = { boolean_true | boolean_false }
+            boolean_true = { ["true"] }
+            boolean_false = { ["false"] }
+
+        string  = @{ ["\""] ~ string_contents ~ ["\""] }
+            string_contents = { (escaped_char | !(["\""] | ["\\"]) ~ any)* }
+            escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"] | ["/"] | ["b"] | ["f"] | ["n"] | ["r"] | ["t"]) }
+
+        unit = @{ number ~ number_suffix }
+            number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
+            number_suffix = @{ (['a'..'z']+ | ["%"])? }
+
+        whitespace = _{ ([" "] | ["\n"] | ["\t"] | ["\r"])+ }
+        comment = _{ block_comment | eol_comment }
+            block_comment = _{ ["/*"] ~ (block_comment | !(block_comment | ["*/"]) ~ any)* ~ ["*/"] }
+            eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
+
     }
-    fn skip_simple_comment<I: Chars>(i: I) -> Output<I,()> {
-        parse!{i;
-            token('/');
-            token('/');
-            skip_while(|c| c != '\n');
-            token('\n');
-            ret ()
+
+    process!{
+        main(&self) -> Expression {
+            // recursing rules:
+            (rule:expression, expression:main()) =>
+                expression,
+            (rule:paren_expression, expression: main()) =>
+                expression,
+            // infix precedence parsing:
+            (rule:infix0, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix1, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix2, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix3, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix4, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix5, expr:_infix()) =>
+                expression(rule, expr),
+            // exprs:
+            (rule:function, expr:_function()) =>
+                expression(rule, expr),
+            (rule:if_then_else, expr:_if_then_else()) =>
+                expression(rule, expr),
+            (rule:application, expr:_application()) =>
+                expression(rule, expr),
+            (rule:variable_accessor, expr:_variable_accessor()) =>
+                expression(rule, expr),
+            (rule:block, expr:_block()) =>
+                expression(rule, expr),
+            // primitives:
+            (rule:string, &s:string_contents) =>
+                expression(rule, Expr::Prim(Primitive::Str(s.to_owned()))),
+            (rule:unit, &n:number, &s:number_suffix) =>
+                expression(rule, Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() ))),
+            (rule:boolean, _:boolean_true) =>
+                expression(rule, Expr::Prim(Primitive::Bool(true))),
+            (rule:boolean, _:boolean_false) =>
+                expression(rule, Expr::Prim(Primitive::Bool(false))),
         }
-    }
-    fn skip_block_comment<I: Chars>(i: I) -> Output<I,()> {
-        fn block_comment_end<I: Chars>(i: I) -> Output<I,()> {
-            parse!{i;
-                token('*');
-                token('/');
-                ret ()
+        _infix(&self) -> Expr {
+            (left:main(), sign:_variable_expression(), right:main()) => {
+                Expr::App{
+                    expr: Box::new(sign),
+                    args: vec![ left, right ]
+                }
             }
         }
-        fn take_until_end<I: Chars>(i: I) -> Output<I,()> {
-            let out: Output<I,Vec<_>> = parse!{
-                many_till(i, |i| any(i).map_err(Error::UnexpectedCharacter), block_comment_end)
-            };
-            out.map(|_| ())
-        }
-        parse!{i;
-            token('/');
-            token('*');
-            take_until_end();
-            ret ()
-        }
-    }
-    fn skip_one_of_the_above<I: Chars>(i: I) -> Output<I,()> {
-        parse!{i;
-            skip_space() <|> skip_block_comment() <|> skip_simple_comment();
-        }
-    }
-
-    parse!{i;
-        skip_many(skip_one_of_the_above)
-    }
-}
-
-fn skip_spaces<I: Chars>(i: I) -> Output<I,()> {
-    skip_comment_or_spaces(i)
-}
-
-fn css_keyval<I: Chars>(i: I) -> Output<I,CSSEntry> {
-    parse!{i;
-        let key = many1(css_key_bit);
-            token(':');
-            skip_spaces();
-        let val = many1(css_value_bit);
-            skip_spaces();
-            token(';');
-        ret CSSEntry::KeyVal{
-            key: key,
-            val: val
-        }
-    }
-}
-
-fn css_key_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        css_key_string() <|> css_expr_anything()
-    }
-}
-fn css_key_string<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        let s = take_while1(|c| c >= 'a' && c <= 'z' || c == '-');
-        ret CSSBit::Str(as_string(s))
-    }
-}
-
-fn css_value_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        css_expr_anything() <|> css_expr_var() <|> css_value_string()
-    }
-}
-fn css_value_string<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        let s = take_while1(|c| c != '$' && c != ';');
-        ret CSSBit::Str(as_string(s))
-    }
-}
-
-fn css_selector_bit<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        css_expr_anything() <|> css_selector_string()
-    }
-}
-fn css_selector_string<I: Chars>(i: I) -> Output<I,CSSBit> {
-    many_till(i,
-        |i| not_token(i, ';'),
-        |i| look_ahead(i, |i| or(i,
-            |i| token(i, '{'),
-            |i| token(i, '$').then(|i| token(i, '{'))
-        ))
-    ).map_err(|_| Error::UnknownError)
-        .bind(|i,res: String|
-        if res.len() > 0 { i.ret(CSSBit::Str(res)) }
-        else { i.err(Error::UnknownError) }
-    )
-}
-
-fn css_expr_var<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        let expr = variable_name_expr();
-        ret CSSBit::Expr(expr);
-    }
-}
-fn css_expr_anything<I: Chars>(i: I) -> Output<I,CSSBit> {
-    parse!{i;
-        let expr = css_expr_anything_raw();
-        ret CSSBit::Expr(expr)
-    }
-}
-fn css_expr_anything_raw<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-            token('$');
-            token('{');
-            skip_spaces();
-        let expr = expr();
-            skip_spaces();
-            token('}');
-        ret expr
-    }
-}
-
-fn css_expr<I: Chars>(i: I) -> Output<I,CSSEntry> {
-    parse!{i;
-        let e = css_expr_anything_raw();
-            skip_spaces();
-            token(';');
-        ret CSSEntry::Expr(e)
-    }
-}
-
-fn css_entry<I: Chars>(i: I) -> Output<I,CSSEntry> {
-    parse!{i;
-        let entry = css_keyval()
-                // allow css blocks to not need a semicolon after:
-                <|> (i -> css_block_expr(i).map(CSSEntry::Expr))
-                // css expressions need to end with a semi-colon:
-                <|> css_expr();
-        ret entry
-    }
-}
-
-fn css_scope_variable<I: Chars>(i: I) -> Output<I,(String,Expression)> {
-    parse!{i;
-        let name = variable_string();
-            token(':');
-            skip_spaces();
-        let expr = expr();
-            skip_spaces();
-            token(';');
-        ret (name.to_owned(),expr)
-    }
-}
-
-fn css_block<I: Chars>(i: I) -> Output<I,Block> {
-
-    use std::collections::HashMap;
-
-    let push_all = |i| {
-
-        let mut css_entries = vec![];
-        let mut scope = HashMap::new();
-        let res = skip_sep_by(i, |i| or(i,
-                |i| { css_scope_variable(i).map(|(varname,expr)| { scope.insert(varname,expr); }) },
-                |i| { css_entry(i).map(|res| { css_entries.push(res); }) }),
-            skip_spaces);
-
-        res.map(|_| (css_entries,scope))
-    };
-
-    parse!{i;
-        let selector = many(css_selector_bit);
-            token('{');
-            skip_spaces();
-        let (css,scope) = push_all();
-            skip_spaces();
-            token('}');
-        ret Block{ scope:scope, selector:selector, css:css }
-    }
-}
-
-fn expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let expr = application_expr() // this will try parsing a bunch of exprs via infix_application_expr, so no need to try again here.
-               <|> css_block_expr()
-               <|> if_then_else_expr()
-               <|> function_declaration_expr();
-        ret expr
-    }
-}
-
-fn css_block_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-        let block = css_block();
-        let end_pos = pos();
-        ret Expression{ start:start_pos, end:end_pos, expr:Expr::Block(block) }
-    }
-}
-
-fn primitive_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-        let val = primitive_string()
-              <|> primitive_bool()
-              <|> primitive_unit();
-        let end_pos = pos();
-        ret Expression{ start:start_pos, end:end_pos, expr:Expr::Prim(val) }
-    }
-}
-
-fn primitive_string<I: Chars>(i: I) -> Output<I,Primitive> {
-    let mut is_escaped = false;
-    let mut out = vec![];
-    parse!{i;
-        let delim = token('"') <|> token('\'');
-            take_till(|c| {
-
-                //found closing delim, not escaped, so end:
-                if c == delim && !is_escaped {
-                    return true;
+        _variable_expression(&self) -> Expression {
+            (sign) => {
+                let tok = self.input().slice(sign.start,sign.end);
+                Expression{
+                    start: Position(sign.start),
+                    end: Position(sign.end),
+                    expr: Expr::Var(tok.to_owned(), vec![])
                 }
-
-                //not escaped, escape char seen, so ignore but escape next:
-                if !is_escaped && c == '\\' {
-                    is_escaped = true;
-                    return false;
+            }
+        }
+        _function(&self) -> Expr {
+            (_:function_args, args:_function_args(), _:function_expression, expr:main()) => {
+                let arg_vec = args.into_iter().collect::<Vec<String>>();
+                Expr::Func{
+                    inputs: arg_vec,
+                    output: Box::new(expr),
+                    scope: Scope::new()
                 }
-
-                //get char, converting it if it's escaped:
-                let mut actual = c;
-                if is_escaped {
-                    is_escaped = false;
-                    actual = match c {
-                        'n'  => '\n',
-                        't'  => '\t',
-                        '\\' => '\\',
-                        a    => a,
+            },
+            (_:function_expression, expr:main()) => {
+                Expr::Func{
+                    inputs: vec![],
+                    output: Box::new(expr),
+                    scope: Scope::new()
+                }
+            },
+        }
+        _function_args(&self) -> LinkedList<String> {
+            (_: variable, &name:variable_name, mut tail: _function_args()) => {
+                tail.push_front(name.to_owned());
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _if_then_else(&self) -> Expr {
+            (cond: main(), then: main(), otherwise: main()) => {
+                Expr::If{
+                    cond: Box::new(cond),
+                    then: Box::new(then),
+                    otherwise: Box::new(otherwise)
+                }
+            }
+        }
+        _application(&self) -> Expr {
+            (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:main()) => {
+                Expr::App{
+                    expr: Box::new(sign),
+                    args: vec![arg]
+                }
+            },
+            (_:function_application, _:function_application_fn, func:main(), _:function_application_args, args:_application_args()) => {
+                Expr::App{
+                    expr: Box::new(func),
+                    args: args.into_iter().collect::<Vec<Expression>>()
+                }
+            }
+        }
+        _application_args(&self) -> LinkedList<Expression> {
+            (_:function_application_arg, expr:main(), mut tail: _application_args()) => {
+                tail.push_front(expr);
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _variable_accessor(&self) -> Expr {
+            (_:variable, &var:variable_name, suffix: _variable_accessor_suffix()) => {
+                Expr::Var(var.to_owned(), suffix.into_iter().collect::<Vec<String>>())
+            }
+        }
+        _variable_accessor_suffix(&self) -> LinkedList<String> {
+            (&piece:variable_name, mut tail: _variable_accessor_suffix()) => {
+                tail.push_front(piece.to_owned());
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block(&self) -> Expr {
+            (selector:_block_selector(), rest:_block_inner()) => {
+                let selector = selector.into_iter().collect::<Vec<CSSBit>>();
+                let mut scope = HashMap::new();
+                let mut css = vec![];
+                for val in rest.into_iter() {
+                    match val {
+                        BlockInner::Scope(key,val) => {
+                            scope.insert(key,val);
+                        },
+                        BlockInner::CSS(entry) => {
+                            css.push(entry);
+                        }
                     }
                 }
-
-                out.push(actual);
-                return false;
-
-            });
-            token(delim);
-        ret Primitive::Str(out.into_iter().collect())
-    }
-}
-
-fn primitive_bool<I: Chars>(i: I) -> Output<I,Primitive> {
-    parse!{i;
-            (skip_tokens("true") >> ret Primitive::Bool(true)) <|> (skip_tokens("false") >> ret Primitive::Bool(false))
-    }
-}
-
-fn primitive_unit<I: Chars>(i: I) -> Output<I,Primitive> {
-    let is_unit = |c| c == '%' || (c >= 'a' && c <= 'z');
-    parse!{i;
-        let num = number();
-        let unit = take_while(is_unit);
-        ret Primitive::Unit(num, as_string(unit).to_owned())
-    }
-}
-
-fn number<I: Chars>(i: I) -> Output<I,f64> {
-    let digits = |i| take_while1(i, |c| c >= '0' && c <= '9').map(as_string);
-    let is_neg = |i| option(i, |i| token(i,'-').map(|_| true), false);
-
-    let res : Output<I,(bool,String)> = parse!{i;
-        let minus = is_neg();
-        let start = digits();
-        let suffix = (i -> token(i,'.') >> digits()) <|> (ret "".to_owned());
-        ret (minus, [start, suffix].join("."))
-    };
-
-    res.map(|(minus, num_str)| {
-        let negate = if minus { -1f64 } else { 1f64 };
-        let num = num_str.parse::<f64>().expect("primitive_number parser unexpected failure");
-        num * negate
-    })
-}
-
-fn if_then_else_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-            skip_tokens("if");
-            skip_spaces();
-        let cond = expr();
-            skip_spaces();
-            skip_tokens("then");
-            skip_spaces();
-        let then = expr();
-            skip_spaces();
-            skip_tokens("else");
-            skip_spaces();
-        let otherwise = expr();
-        let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:Expr::If{ cond:Box::new(cond), then:Box::new(then), otherwise:Box::new(otherwise) }
-        }
-    }
-}
-
-fn variable_name_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-        token(VAR_PREFIX);
-        let vars = sep_by1(raw_variable_string, |s| token(s,'.'));
-        let end_pos = pos();
-        ret {
-            let mut vars: Vec<String> = vars;
-            let first = vars.remove(0);
-            Expression{
-                start:start_pos,
-                end:end_pos,
-                expr:Expr::Var(first, vars)
+                Expr::Block(Block{scope:scope,css:css,selector:selector})
             }
         }
-    }
-}
-
-fn variable_string<I: Chars>(i: I) -> Output<I,String> {
-    parse!{i;
-        token(VAR_PREFIX);
-        let name = raw_variable_string();
-        ret name
-    }
-}
-
-fn raw_variable_string<I: Chars>(i: I) -> Output<I,String> {
-    parse!{i;
-        let name = take_while1(|c| c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_');
-        ret as_string(name)
-    }
-}
-
-fn function_arg_sep<I: Chars>(i: I) -> Output<I,()> {
-    parse!{i;
-        skip_spaces();
-        token(',');
-        skip_spaces();
-        ret ()
-    }
-}
-
-fn function_declaration_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-            token('(');
-            skip_spaces();
-        let vars = sep_by(variable_string, function_arg_sep);
-            skip_spaces();
-            token(')');
-            skip_spaces();
-            skip_tokens("=>");
-            skip_spaces();
-        let expr = expr();
-        let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:Expr::Func{ inputs:vars, output:Box::new(expr), scope:Scope::new() }
-        }
-    }
-}
-
-fn paren_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-            token('(');
-            skip_spaces();
-        let expr = expr();
-            skip_spaces();
-            token(')');
-        ret expr
-    }
-}
-
-fn prefix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-        let left = variable_name_expr() <|> paren_expr();
-            skip_spaces();
-            token('(');
-            skip_spaces();
-        let args = sep_by(expr, function_arg_sep);
-            skip_spaces();
-            token(')');
-        let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:Expr::App{ expr: Box::new(left), args: args }
-        }
-    }
-}
-
-fn unary_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i;
-        let start_pos = pos();
-        let tok = token('!') <|> token('-');
-        let end_pos_tok = pos();
-        let arg = prefix_application_expr() <|> primitive_expr() <|> variable_name_expr() <|> paren_expr();
-        let end_pos = pos();
-        ret Expression{
-            start:start_pos,
-            end:end_pos,
-            expr:Expr::App{
-                expr: Box::new(Expression{
-                    start:start_pos,
-                    end:end_pos_tok,
-                    expr:Expr::Var(tok.to_string(), vec![])
-                }),
-                args: vec![arg]
+        _block_selector(&self) -> LinkedList<CSSBit> {
+            (&chars:block_selector_chars, mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            (_:block_interpolated_expression, expr:main(), mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            () => {
+                LinkedList::new()
             }
         }
-    }
-}
-
-fn infix_application_expr<I: Chars>(i: I) -> Output<I,Expression> {
-
-    let mut ops = vec![];
-    let mut exprs = vec![];
-    let op_chars = ['^','*','-','+','=','<','>','&','|','/'];
-
-    let out = {
-        let is_op_char = |c: char| -> bool {
-            (&op_chars).iter().find(|&a| *a == c).is_some()
-        };
-        let push_expr = |i: I| -> Output<I,()> {
-            let res = parse!{i;
-                    unary_application_expr()
-                <|> primitive_expr()
-                <|> prefix_application_expr()
-                <|> variable_name_expr()
-                <|> paren_expr()
-            };
-            res.map(|e| { exprs.push(e); })
-        };
-        let push_op = |i: I| -> Output<I,()> {
-            let res = parse!{i;
-                    skip_spaces();
-                let start_pos = pos();
-                let op = take_while1(&is_op_char);
-                let end_pos = pos();
-                    skip_spaces();
-                ret (as_string(op),start_pos,end_pos)
-            };
-            res.map(|op| { ops.push(op); })
-        };
-        skip_sep_by1(i, push_expr, push_op)
-    };
-
-    out.bind(|i, _| {
-
-        // return the EXPR here if there aren't any ops, so that we don't have to
-        // try parsing it again elsewhere:
-        if exprs.len() == 1 {
-            return i.ret(exprs.remove(0));
+        _block_inner(&self) -> LinkedList<BlockInner> {
+            (_:block_assignment, _:block_variable_assign, &var:variable, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::Scope(var.to_owned(),expr) );
+                tail
+            },
+            (_:block_expression, _:block_interpolated_expression, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_expression, _:variable, expr:_variable_expression(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_expression, _:block_nested, expr:main(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( CSSEntry::Expr(expr) ) );
+                tail
+            },
+            (_:block_css, entry:_block_css(), mut tail:_block_inner()) => {
+                tail.push_front( BlockInner::CSS( entry ) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
         }
-
-        assert!(ops.len() == exprs.len() - 1, "Expecting one less op than expr for infix parsing");
-
-        while exprs.len() > 1 {
-
-            // find next idx to construct expr from
-            let best_idx = ops.iter().enumerate().fold((1,0), |(best_idx,best_prec), (idx,op)|{
-                let this_prec = get_operator_precedence(&op.0);
-                return if this_prec > best_prec { (idx,this_prec) } else { (best_idx,best_prec) }
-            }).0;
-
-            // build next expr:
-            let first_arg = exprs[best_idx].clone();
-            let second_arg = exprs[best_idx+1].clone();
-            let (op,op_start,op_end) = ops[best_idx].clone();
-            let new_expr = Expression{
-                start: first_arg.start,
-                end: second_arg.end,
-                expr: Expr::App{
-                    expr: Box::new(Expression{
-                        start: op_start,
-                        end: op_end,
-                        expr: Expr::Var(op,vec![])
-                    }),
-                    args: vec![ first_arg, second_arg ]
+        _block_css(&self) -> CSSEntry {
+            (key:_block_css_key(), val:_block_css_val()) => {
+                CSSEntry::KeyVal{
+                    key: key.into_iter().collect::<Vec<CSSBit>>(),
+                    val: val.into_iter().collect::<Vec<CSSBit>>()
                 }
-            };
-
-            // update vecs with new expr, removing just-used bits:
-            ops.remove(best_idx);
-            exprs.remove(best_idx+1);
-            exprs[best_idx] = new_expr;
-
+            }
         }
-
-        i.ret(exprs.remove(0))
-
-    })
-
-}
-
-fn get_operator_precedence(op: &str) -> usize {
-    match op {
-        "!" => 10,
-        "^" => 8,
-        "*" | "/" => 7,
-        "+" | "-" => 6,
-        "==" | "!=" | "<" | "<=" | ">" | ">=" => 4,
-        "&&" => 3,
-        "||" => 2,
-        _ => 5
+        _block_css_key(&self) -> LinkedList<CSSBit> {
+            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (&chars:block_css_key_chars, mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block_css_val(&self) -> LinkedList<CSSBit> { //TODO: FILL IN!
+            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (_:variable, var:_variable_expression(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(var) );
+                tail
+            },
+            (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
     }
-}
-
-fn application_expr<I: Chars>(i: I) -> Output<I,Expression> {
-    parse!{i; infix_application_expr() } // this covers other applications
 }
 
 #[cfg(test)]
-pub mod tests {
+mod test {
 
     use super::*;
 
-    fn s(s: &str) -> String {
-        s.to_owned()
-    }
-
-    fn e(e: Expr) -> Expression {
-        Expression{start:Position::new(), end:Position::new(), expr:e}
-    }
-
-    fn var(name: &str) -> Box<Expression> {
-        Box::new(e(Expr::Var(s(name),vec![])))
-    }
-
-    // parses the inner part of the macro; this can determine what
-    // conditions we can test for.
-    macro_rules! push_test_condition {
-        // test that the thing on the left is parsed into the thing on the right:
-        ($vec:ident using $test:expr; $input:expr => $output:expr; $($rest:tt)*) => {
-            $vec.push(( parse_only_str($test,$input), Ok($output) ));
-            push_test_condition!{$vec using $test; $($rest)* };
-        };
-        // test that the hting on the left and thing on the right both parse into the same thing:
-        ($vec:ident using $test:expr; $input:expr , $output:expr; $($rest:tt)*) => {
-            $vec.push(( parse_only_str($test,$input), parse_only_str($test,$output) ));
-            push_test_condition!{$vec using $test; $($rest)* };
-        };
-        ($vec:ident using $test:expr;) => ( () )
-    }
-
-    // parse the outer part of the test macro.
+    // test the parsing aspect:
     macro_rules! parse_test {
-        ($i:ident using $test:expr; $($rest:tt)+) => (
+
+        // create test function:
+        ( $func:ident; $($rest:tt)+ ) => (
             #[test]
-            fn $i() {
-                let mut mapping = vec![];
-                push_test_condition!{mapping using $test; $($rest)+ };
-                for (input,output) in mapping {
-                    assert!(input.is_ok(), "input is not Ok: {:?}", input);
-                    assert!(output.is_ok(), "output is not Ok: {:?}", output);
-                    assert_eq!(input, output);
+            fn $func() {
+                use std::fmt::Write;
+                let mut errors = String::new();
+                parse_test!{ __SINGLE (errors) $($rest)+ }
+                if errors.len() > 0 {
+                    assert!(false, "\n{}", errors);
                 }
             }
         );
-        ($i:ident; $($rest:tt)+ ) => (
-            parse_test!{ $i using expr; $($rest)+ }
-        )
-    }
 
-    parse_test!{test_css_keyval using css_keyval;
-        "-hello-there: you(123,456 );" =>
-            CSSEntry::KeyVal{ key: vec![ CSSBit::Str(s("-hello-there")) ], val: vec![ CSSBit::Str(s("you(123,456 )")) ] };
-        "-hello-there:you;" =>
-            CSSEntry::KeyVal{ key: vec![ CSSBit::Str(s("-hello-there")) ], val: vec![ CSSBit::Str(s("you")) ] };
-        "-hello-there: rgb($hello, $b, 2px);" =>
-            CSSEntry::KeyVal{
-                key: vec![ CSSBit::Str(s("-hello-there")) ],
-                val: vec![
-                    CSSBit::Str(s("rgb(")),
-                    CSSBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
-                    CSSBit::Str(s(", ")),
-                    CSSBit::Expr( e(Expr::Var(s("b"),vec![])) ),
-                    CSSBit::Str(s(", 2px)")),
-                ]
-            };
-        "-hello-there: stuff${ $hello }stuff;" =>
-            CSSEntry::KeyVal{
-                key: vec![ CSSBit::Str(s("-hello-there")) ],
-                val: vec![
-                    CSSBit::Str(s("stuff")),
-                    CSSBit::Expr( e(Expr::Var(s("hello"),vec![])) ),
-                    CSSBit::Str(s("stuff"))
-                ]
-            };
-    }
+        ( __SINGLE ($errors:ident) ) => ();
 
-    #[test]
-    fn test_not_css_keyval_number() {
-        let res = parse_only_str(|i| css_keyval(i), "-hell2o-there:you;").map_err(|_| ());
-        assert_eq!(res, Err(()));
-    }
-
-    parse_test!{test_number using number;
-        "-43.1" => -43.1;
-        "0.0" => 0.0;
-        "-0.0" => 0.0;
-        "100" => 100.0;
-        "99999.99999" => 99999.99999;
-    }
-
-    parse_test!{test_primitive_string using primitive_string;
-        r#""hello""# =>
-            Primitive::Str(s("hello"));
-        r#""he\l\lo""# =>
-            Primitive::Str(s("hello"));
-        r#""he\\llo""# =>
-            Primitive::Str(s(r#"he\llo"#));
-        r#"'he\\llo'"# =>
-            Primitive::Str(s(r#"he\llo"#));
-        r#""""# =>
-            Primitive::Str(s(""));
-        r#""escaped \"lark\"""# =>
-            Primitive::Str(s(r#"escaped "lark""#));
-    }
-
-    parse_test!{test_function_declaration_expr using function_declaration_expr;
-        "($apPl_3s, $b2ananA) => true" =>
-            e(Expr::Func{
-                inputs: vec![s("apPl_3s"),s("b2ananA")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(true)))),
-                scope: Scope::new()
-            });
-        "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
-            e(Expr::Func{
-                inputs: vec![s("a"),s("b")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(false)))),
-                scope: Scope::new()
-            });
-    }
-
-    parse_test!{test_application_expr using application_expr;
-        "$hello(2px, true)" =>
-            e(Expr::App{
-                expr: var("hello"),
-                args: vec![ e(Expr::Prim(Primitive::Unit(2.0,s("px")))), e(Expr::Prim(Primitive::Bool(true))) ]
-            });
-        "!$hello" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![ e(Expr::Var(s("hello"),vec![])) ]
-            });
-        "!$hello()" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![ e(Expr::App{ expr: var("hello"), args: vec![] }) ]
-            });
-        "!$hello($a)" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![
-                    e(Expr::App{
-                        expr: var("hello"),
-                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                    })
-                ]
-            });
-        "$hello.there($a)" =>
-            e(Expr::App{
-                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
-                args: vec![ e(Expr::Var(s("a"),vec![])) ]
-            });
-        "!$hello.there($a)" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![
-                    e(Expr::App{
-                        expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
-                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                    })
-                ]
-            });
-        "!$hello.there($a) + 2px" =>
-            e(Expr::App{
-                expr: var("+"),
-                args: vec![
-                    e(Expr::App{
-                        expr: var("!"),
-                        args: vec![
-                            e(Expr::App{
-                                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
-                                args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                            })
-                        ]
-                    }),
-                    e(Expr::Prim(Primitive::Unit(2.0,s("px"))))
-                ]
-            });
-    }
-
-    fn css_selector<I: Chars>(i: I) -> Output<I,Vec<CSSBit>> {
-        parse!{i;
-            let bits = many1(css_selector_bit);
-            token('{');
-            ret bits
-        }
-    }
-    parse_test!{test_css_selector using css_selector;
-        "hello there {" =>
-            vec![
-                CSSBit::Str(s("hello there "))
-            ];
-        "${ $a }{" =>
-            vec![
-                CSSBit::Expr(e(Expr::Var( s("a"), vec![] )))
-            ];
-        "hello${ $a }there {" =>
-            vec![
-                CSSBit::Str(s("hello")),
-                CSSBit::Expr(e(Expr::Var( s("a"), vec![] ))),
-                CSSBit::Str(s("there "))
-            ];
-    }
-
-    parse_test!{test_precedence using expr;
-        "1 + 2 + 3"         , "(1 + 2) + 3";
-        "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
-        "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
-        "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
-        "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
-        "-1+2 + 3"          , "(-1) + 2 + 3";
-        "1 + -2 +3"         , "1 + (-2) + 3";
-    }
-
-    parse_test!{test_empty_block using expr;
-        ".some-class {
-            /* empty */
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![],
-            css: vec![]
-        }));
-    }
-
-    parse_test!{test_variable_in_block using expr;
-        ".some-class {
-            $hello: 2px;
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![
-                s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
-            ],
-            css: vec![]
-        }));
-    }
-
-    parse_test!{test_function_in_block using expr;
-        ".some-class {
-            $hello: ($a, $b) => true;
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![
-                s("hello") => e(Expr::Func{
-                    inputs: vec![s("a"), s("b")],
-                    scope: Scope::new(),
-                    output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
-                })
-            ],
-            css: vec![]
-        }));
-    }
-
-    parse_test!{test_sub_block_in_block using expr;
-        ".some-class {
-            $hello: { };
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![
-                s("hello") => e(Expr::Block(Block{
-                    selector: vec![],
-                    scope: hash_map![],
-                    css: vec![]
-                }))
-            ],
-            css: vec![]
-        }));
-    }
-
-    parse_test!{test_expr_in_block using expr;
-        ".some-class {
-            ${ $hello };
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![],
-            css: vec![
-                CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
-            ]
-        }));
-    }
-
-    parse_test!{test_fn_and_expr_in_block using expr;
-        ".some-class {
-            $hello: ($a, $b) => true;
-            ${ $hello };
-        }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![
-                s("hello") => e(Expr::Func{
-                    inputs: vec![s("a"), s("b")],
-                    scope: Scope::new(),
-                    output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
-                })
-            ],
-            css: vec![
-                CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
-            ]
-        }));
-    }
-
-    // make sure that a css keyval pair followed by a block isn't mistakenly seen
-    // as a selector + block.
-    parse_test!{test_selector_then_empty_block_in_block using expr;
-        "{
-            border: 1px solid black;
+        // str => variable[ child, child.. ]
+        ( __SINGLE ($errors:ident) $input:expr => $token:ident[ $($inner:ident $children:tt),* ]; $($rest:tt)* ) => (
             {
-                lark: another thing hereee;
-            }
-        }" =>
-        e(Expr::Block(Block{
-            scope: hash_map![],
-            selector: vec![],
-            css: vec![
-                CSSEntry::KeyVal{
-                    key: vec![CSSBit::Str(s("border"))],
-                    val: vec![CSSBit::Str(s("1px solid black"))]
-                },
-                CSSEntry::Expr(e(Expr::Block(Block{
-                    scope: hash_map![],
-                    selector: vec![],
-                    css: vec![
-                        CSSEntry::KeyVal{
-                            key: vec![CSSBit::Str(s("lark"))],
-                            val: vec![CSSBit::Str(s("another thing hereee"))]
-                        }
-                    ]
-                })))
-            ]
-        }));
-    }
+                let s = $input.to_owned();
+                let mut parser = Rdp::new(StringInput::new($input));
 
-    parse_test!{test_css_block using expr;
-        ".some-class:not(:last-child) {
-
-            // A comment!
-            $hello: ($a, $b) => $a + $b;
-            $another: 2;
-
-            $lark: {
-                $sub1: 2px; /* another comment! */
-            };
-
-            ${ $hello(2px, 5px) };
-            {
-                border: 1px solid black;
-                {
-                    lark: another thing hereee;
+                if !parser.$token(){
+                    writeln!(&mut $errors, "ERROR: could not parse!\n - wants: {:?}\n - input: \n{}\n - expected: {:?}\n - got: {:?}", parser.expected(), s, Rule::$token, parser.queue());
+                }
+                else if !parser.end() {
+                    writeln!(&mut $errors, "ERROR: didn't end when expected!\n - wants: {:?}\n - input: \n{}\n - expected: {:?}\n - got: {:?}", parser.expected(), s, Rule::$token, parser.queue());
+                }
+                else {
+                    assert_eq!(s.len(), parser.queue()[0].end);
                 }
             }
+            parse_test!{ __SINGLE ($errors) $($rest)* }
+        );
 
-            ${ if true then $hello else $bye };
+    }
 
-            & .a-sub-class .more.another, .sub-clas-two {
-                $subThing: -2px + 4px;
-                color: red;
+    // test the processing aspect:
+    macro_rules! process_test {
+
+        // create test function:
+        ( $func:ident; $($rest:tt)+ ) => (
+            #[test]
+            fn $func() {
+                use std::fmt::Write;
+                let mut errors = String::new();
+                process_test!{ __SINGLE (errors) $($rest)+ }
+                if errors.len() > 0 {
+                    assert!(false, "\n{}", errors);
+                }
             }
+        );
 
-            -moz-background-color:
-                            1px solid blue; // comments everywhere...
-            border-radius: 10px;
+        // run a test:
+        ( __SINGLE ($errors:ident) $input:expr => $output:expr; $($rest:tt)* ) => (
+            {
+                match parse($input) {
+                    Ok(expr) => {
+                        //TODO: TestEquality trait that ignores expression positions but uses partialEq for everything else,
+                        //      so that we can compare for testing
+                        if expr != $output {
+                            writeln!(&mut errors, "ERROR: exprs did not match!\n - expected: {:?}\n - got: {:?}", $output, expr);
+                        }
+                    }
+                    Err(err) => writeln!(&mut errors, "ERROR: could not build expr!\n - input: {:?}\n - expected: {:?}", $input, $output);
+                }
+            }
+            process_test!( __SINGLE ($errors) $($rest)*);
+        )
 
-            $more: $lark.sub1;
-        }"
-        ,
+    }
+
+    parse_test!{test_variable;
+        "$hello" => variable[];
+        "$2ello" => variable[];
+        "$_hello" => variable[];
+        "$hello" => expression[];
+        "$2ello" => expression[];
+        "$_hello" => expression[];
+    }
+
+    parse_test!{test_numeric;
+        "20" => number[];
+        "-20" => number[];
+        "0.12" => number[];
+        "100.0" => number[];
+        "100.0px" => unit[];
+        "100.0em" => unit[];
+        "0%" => unit[];
+        "100.0px" => expression[];
+        "100.0em" => expression[];
+        "0%" => expression[];
+    }
+
+    parse_test!{test_if_then_else;
+        "if true then  true \nelse true" => if_then_else[];
+        "if 20px then 10 else 100" => if_then_else[];
+        "if true then true else true" => expression[];
+        "if 20px then 10 else 100" => expression[];
+    }
+
+    parse_test!{test_strings;
+        r#""hello there""# => string[];
+        r#""hello \"hello\" there""# => string[];
+        r#""hello there""# => expression[];
+        r#""hello \"hello\" there""# => expression[];
+    }
+
+    parse_test!{test_functions;
+        "() => true" => function[];
+        "($lark, $another) => $lark" => function[];
+    }
+
+    parse_test!{test_operators;
+        "20 + 40" => expression[];
+        "20 / 40" => expression[];
+        "20 * 40" => expression[];
+        "20 - 40" => expression[];
+    }
+
+    parse_test!{test_func_applications;
+        "$hello(2px,true)" => expression[];
+        "$hello(2px, true)" => expression[];
+        "$hello(2px, true)" => application[];
+        "!$hello" => expression[];
+        "!($hello)" => expression[];
+        "!$hello()" => expression[];
+        "!($hello())" => expression[];
+        "!$hello(2px)" => expression[];
+        "!($hello(2px))" => expression[];
+        "!($hello(2px, true))" => expression[];
+        "!$hello(2px, true)" => expression[];
+        "!$hello()" => application[];
+        "!$hello(1px)" => application[];
+        "!$hello(1px, true)" => application[];
+        "!($hello)" => application[];
+        "!($hello())" => application[];
+        "!($hello(1px))" => application[];
+        "!($hello(1px, true))" => application[];
+    }
+
+    parse_test!{test_block_css;
+        "hello: there;" => block_css[];
+        "${ $hello }: there;" => block_css[];
+        "${ $hello }: the${ 2px }re;" => block_css[];
+    }
+
+    parse_test!{test_block_assignment;
+        "$hello: 2px;" => block_assignment[];
+        "$hello: ($a, $b) => $a + $b;" => block_assignment[];
+        "$hello: {};" => block_assignment[];
+    }
+
+    parse_test!{test_block_with_css_only;
+        "{}" => block[];
+        ".stuff {}" => block[];
+        ".stuff {}" => expression[];
+        "{ hello: there; }" => block[];
+        "{ ${ $hello }: there; }" => block[];
+        "{ ${ $hello }: the${ 2px }re; }" => block[];
+    }
+
+    parse_test!{test_block_more;
+        "{ $hello: 1px; ${ $hello }: the${ 2px }re; }" => block[];
+        ".some-selector value here::after { $hello: 1px; ${ $hello }: the${ 2px }re; }" => block[];
+        ".some-selector value here::after { $hello: 1px; -hello-${ $world }: the${ 2px }re; }" => block[];
+        ".some-class:not(:last-child) {}" => block[];
         ".some-class:not(:last-child) {
-
             $hello: ($a, $b) => $a + $b;
             $another: 2;
             $lark: { $sub1: 2px; };
             $more: $lark.sub1;
-
+        }" => block[];
+        ".some-class:not(:last-child) {
             ${ $hello(2px, 5px) };
-            { border: 1px solid black; { lark: another thing hereee; }}
-            ${ if true then $hello else $bye };
+        }" => block[];
+        ".some-class:not(:last-child) {
+            $hello;
+        }" => block[];
+        ".some-class:not(:last-child) {
+            $hello: ($a, $b) => $a + $b;
+            $another: 2;
+            $lark: { $sub1: 2px; };
+            $more: $lark.sub1;
+            /* block /* nested!! */ comment */
 
+            -moz-background-color: 1px solid blue;
+            border-radius: 10px;
+        }" => block[];
+        ".some-class:not(:last-child) {
+            // a comment till end of line
+            // lark
+            // woop
             & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
-        }";
+        }" => block[];
+        "{ $lark: {}; .stuff {} }" => block[];
+        "{ .stuff {} $lark: {}; }" => block[];
     }
 
 }
