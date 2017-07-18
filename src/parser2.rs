@@ -38,17 +38,18 @@ impl_rdp! {
             prefix_application_arg = !@{ paren_expression | function_application | variable_accessor }
 
             function_application = { function_application_fn ~ ["("] ~ function_application_args ~ [")"] }
-            function_application_fn = _{ variable_accessor | paren_expression }
-            function_application_args = _{ ( function_application_arg ~ ([","] ~ function_application_arg)* )? }
+            function_application_fn = { variable_accessor | paren_expression }
+            function_application_args = { ( function_application_arg ~ ([","] ~ function_application_arg)* )? }
             function_application_arg = { expression }
 
-        paren_expression = _{ ["("] ~ expression ~ [")"] }
+        paren_expression = { ["("] ~ expression ~ [")"] }
         variable = @{ ["$"] ~ variable_name }
         variable_accessor = { variable ~ ( ["."] ~ variable_name )* }
         if_then_else = { ["if"] ~ expression ~ ["then"] ~ expression ~ ["else"] ~ expression }
 
         function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ expression }
-            function_args = _{ variable ~ ( [","] ~ variable )* }
+            function_args = { variable ~ ( [","] ~ variable )* }
+            function_expression = { expression }
 
         variable_name = { (['a'..'z'] | ['A'..'Z'] | ["_"] | ['0'..'9'])+ }
         boolean = { boolean_true | boolean_false }
@@ -72,41 +73,44 @@ impl_rdp! {
 
     process!{
         main(&self) -> Expression {
-            (rule:expression, expr:_expr()) => {
-                Expression{
-                    start: Position(rule.start),
-                    end: Position(rule.end),
-                    expr: expr
-                }
-            },
-            // TODO check everyting that calls main and work out how to make them all happy,
-            //      since half of them don't expect "expression" next but some token after it.
-            // (expr:_expr()) => {
-            //     Expression{
-            //         start: Position(rule.start),
-            //         end: Position(rule.end),
-            //         expr: expr
-            //     }
-            // }
-        }
-        _expr(&self) -> Expr {
-            (rule:expression, expr:_expr()) => expr,
-            (rule:infix0, expr:_infix()) => expr,
-            (rule:infix1, expr:_infix()) => expr,
-            (rule:infix2, expr:_infix()) => expr,
-            (rule:infix3, expr:_infix()) => expr,
-            (rule:infix4, expr:_infix()) => expr,
-            (rule:infix5, expr:_infix()) => expr,
-            (rule:function, expr:_function()) => expr,
-            (rule:if_then_else, expr:_if_then_else()) => expr,
-            (rule:application, expr:_application()) => expr,
-            (rule:variable_accessor, expr:_variable_accessor()) => expr,
-            (rule:block, expr:_block()) => expr,
+            // recursing rules:
+            (rule:expression, expression:main()) =>
+                expression,
+            (rule:paren_expression, expression: main()) =>
+                expression,
+            // infix precedence parsing:
+            (rule:infix0, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix1, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix2, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix3, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix4, expr:_infix()) =>
+                expression(rule, expr),
+            (rule:infix5, expr:_infix()) =>
+                expression(rule, expr),
+            // exprs:
+            (rule:function, expr:_function()) =>
+                expression(rule, expr),
+            (rule:if_then_else, expr:_if_then_else()) =>
+                expression(rule, expr),
+            (rule:application, expr:_application()) =>
+                expression(rule, expr),
+            (rule:variable_accessor, expr:_variable_accessor()) =>
+                expression(rule, expr),
+            (rule:block, expr:_block()) =>
+                expression(rule, expr),
             // primitives:
-            (rule:string, &s:string_contents) => Expr::Prim(Primitive::Str(s.to_owned())),
-            (rule:unit, &n:number, &s:number_suffix) => Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() )),
-            (rule:boolean, _:boolean_true) => Expr::Prim(Primitive::Bool(true)),
-            (rule:boolean, _:boolean_false) => Expr::Prim(Primitive::Bool(false)),
+            (rule:string, &s:string_contents) =>
+                expression(rule, Expr::Prim(Primitive::Str(s.to_owned()))),
+            (rule:unit, &n:number, &s:number_suffix) =>
+                expression(rule, Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() ))),
+            (rule:boolean, _:boolean_true) =>
+                expression(rule, Expr::Prim(Primitive::Bool(true))),
+            (rule:boolean, _:boolean_false) =>
+                expression(rule, Expr::Prim(Primitive::Bool(false))),
         }
         _infix(&self) -> Expr {
             (left:main(), sign:_variable_expression(), right:main()) => {
@@ -127,14 +131,21 @@ impl_rdp! {
             }
         }
         _function(&self) -> Expr {
-            (args:_function_args(), expr:main()) => {
+            (_:function_args, args:_function_args(), _:function_expression, expr:main()) => {
                 let arg_vec = args.into_iter().collect::<Vec<String>>();
                 Expr::Func{
                     inputs: arg_vec,
                     output: Box::new(expr),
                     scope: Scope::new()
                 }
-            }
+            },
+            (_:function_expression, expr:main()) => {
+                Expr::Func{
+                    inputs: vec![],
+                    output: Box::new(expr),
+                    scope: Scope::new()
+                }
+            },
         }
         _function_args(&self) -> LinkedList<String> {
             (_: variable, &name:variable_name, mut tail: _function_args()) => {
@@ -161,7 +172,7 @@ impl_rdp! {
                     args: vec![arg]
                 }
             },
-            (_:function_application, func:main(), args:_application_args()) => {
+            (_:function_application, _:function_application_fn, func:main(), _:function_application_args, args:_application_args()) => {
                 Expr::App{
                     expr: Box::new(func),
                     args: args.into_iter().collect::<Vec<Expression>>()
@@ -285,6 +296,15 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
+    }
+}
+
+// turn a Token + Expr into an Expression:
+fn expression(rule: Token<Rule>, expr: Expr) -> Expression {
+    Expression{
+        start: Position(rule.start),
+        end: Position(rule.end),
+        expr: expr
     }
 }
 
