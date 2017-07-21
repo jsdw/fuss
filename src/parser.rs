@@ -231,7 +231,7 @@ impl_rdp! {
             }
         }
         _block(&self) -> Expr {
-            (selector:_block_selector(), rest:_block_inner()) => {
+            (_:block_selector, selector:_block_selector(), rest:_block_inner()) => {
                 let selector = selector.into_iter().collect::<Vec<CSSBit>>();
                 let mut scope = HashMap::new();
                 let mut css = vec![];
@@ -332,6 +332,18 @@ mod test {
 
     use super::*;
 
+    fn s(s: &str) -> String {
+        s.to_owned()
+    }
+
+    fn e(e: Expr) -> Expression {
+        Expression{start:Position::new(), end:Position::new(), expr:e}
+    }
+
+    fn var(name: &str) -> Box<Expression> {
+        Box::new(e(Expr::Var(s(name),vec![])))
+    }
+
     // test the parsing aspect:
     macro_rules! parse_test {
 
@@ -371,6 +383,19 @@ mod test {
 
     }
 
+    // same as PartialEq, except we ignore positions in Expressions.
+    // this is used so that we can compare them in process_test, below.
+    trait TestEquality: PartialEq {
+        fn test_equals(&self, t2: &Self) -> bool {
+            self.eq(t2)
+        }
+    }
+    impl TestEquality for Expression {
+        fn test_equals(&self, t2: &Expression) -> bool {
+            self.expr.eq(&t2.expr)
+        }
+    }
+
     // test the processing aspect:
     macro_rules! process_test {
 
@@ -387,18 +412,19 @@ mod test {
             }
         );
 
+        ( __SINGLE ($errors:ident) ) => ();
+
         // run a test:
         ( __SINGLE ($errors:ident) $input:expr => $output:expr; $($rest:tt)* ) => (
             {
-                match parse($input) {
-                    Ok(expr) => {
-                        //TODO: TestEquality trait that ignores expression positions but uses partialEq for everything else,
-                        //      so that we can compare for testing
-                        if expr != $output {
-                            writeln!(&mut errors, "ERROR: exprs did not match!\n - expected: {:?}\n - got: {:?}", $output, expr);
-                        }
-                    }
-                    Err(err) => writeln!(&mut errors, "ERROR: could not build expr!\n - input: {:?}\n - expected: {:?}", $input, $output);
+                let mut parser = Rdp::new(StringInput::new($input));
+                if !parser.expression() {
+                     writeln!(&mut $errors, "ERROR: processor failed to parse expression!\n - input: {:?}\n - expected: {:?}", $input, $output);
+                }
+                let expr = parser.main();
+
+                if !expr.test_equals(&$output) {
+                    writeln!(&mut $errors, "ERROR: exprs did not match!\n - expected: {:?}\n - got: {:?}\n - tokens: {:?}", $output, expr, parser.queue());
                 }
             }
             process_test!( __SINGLE ($errors) $($rest)*);
@@ -415,6 +441,12 @@ mod test {
         "$_hello" => expression[];
     }
 
+    process_test!{test_Variable_e;
+        "$hello" => e(Expr::Var(s("hello"), vec![]));
+        "$hello.there" => e(Expr::Var(s("hello"), vec![s("there")]));
+        "$hello.there.you" => e(Expr::Var(s("hello"), vec![s("there"), s("you")]));
+    }
+
     parse_test!{test_numeric;
         "20" => number[];
         "-20" => number[];
@@ -426,6 +458,14 @@ mod test {
         "100.0px" => expression[];
         "100.0em" => expression[];
         "0%" => expression[];
+    }
+
+    process_test!{test_number_e;
+        "10" => e(Expr::Prim(Primitive::Unit(10.0,s(""))));
+        "0" => e(Expr::Prim(Primitive::Unit(0.0,s(""))));
+        "0.12" => e(Expr::Prim(Primitive::Unit(0.12,s(""))));
+        "0%" => e(Expr::Prim(Primitive::Unit(0.0,s("%"))));
+        "100.0px" => e(Expr::Prim(Primitive::Unit(100.0,s("px"))));
     }
 
     parse_test!{test_if_then_else;
@@ -442,9 +482,39 @@ mod test {
         r#""hello \"hello\" there""# => expression[];
     }
 
+    process_test!{test_strings_e;
+        r#""hello""# =>
+            e(Expr::Prim(Primitive::Str(s("hello"))));
+        r#""he\l\lo""# =>
+            e(Expr::Prim(Primitive::Str(s("hello"))));
+        r#""he\\llo""# =>
+            e(Expr::Prim(Primitive::Str(s(r#"he\llo"#))));
+        r#"'he\\llo'"# =>
+            e(Expr::Prim(Primitive::Str(s(r#"he\llo"#))));
+        r#""""# =>
+            e(Expr::Prim(Primitive::Str(s(""))));
+        r#""escaped \"lark\"""# =>
+            e(Expr::Prim(Primitive::Str(s(r#"escaped "lark""#))));
+    }
+
     parse_test!{test_functions;
         "() => true" => function[];
         "($lark, $another) => $lark" => function[];
+    }
+
+    process_test!{test_functions_e;
+        "($apPl_3s, $b2ananA) => true" =>
+            e(Expr::Func{
+                inputs: vec![s("apPl_3s"),s("b2ananA")],
+                output: Box::new(e(Expr::Prim(Primitive::Bool(true)))),
+                scope: Scope::new()
+            });
+        "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
+            e(Expr::Func{
+                inputs: vec![s("a"),s("b")],
+                output: Box::new(e(Expr::Prim(Primitive::Bool(false)))),
+                scope: Scope::new()
+            });
     }
 
     parse_test!{test_operators;
@@ -475,6 +545,65 @@ mod test {
         "!($hello(1px, true))" => application[];
     }
 
+    process_test!{test_func_applications_e;
+        "$hello(2px, true)" =>
+            e(Expr::App{
+                expr: var("hello"),
+                args: vec![ e(Expr::Prim(Primitive::Unit(2.0,s("px")))), e(Expr::Prim(Primitive::Bool(true))) ]
+            });
+        "!$hello" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![ e(Expr::Var(s("hello"),vec![])) ]
+            });
+        "!$hello()" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![ e(Expr::App{ expr: var("hello"), args: vec![] }) ]
+            });
+        "!$hello($a)" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![
+                    e(Expr::App{
+                        expr: var("hello"),
+                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
+                    })
+                ]
+            });
+        "$hello.there($a)" =>
+            e(Expr::App{
+                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                args: vec![ e(Expr::Var(s("a"),vec![])) ]
+            });
+        "!$hello.there($a)" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![
+                    e(Expr::App{
+                        expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
+                    })
+                ]
+            });
+        "!$hello.there($a) + 2px" =>
+            e(Expr::App{
+                expr: var("+"),
+                args: vec![
+                    e(Expr::App{
+                        expr: var("!"),
+                        args: vec![
+                            e(Expr::App{
+                                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                                args: vec![ e(Expr::Var(s("a"),vec![])) ]
+                            })
+                        ]
+                    }),
+                    e(Expr::Prim(Primitive::Unit(2.0,s("px"))))
+                ]
+            });
+    }
+
     parse_test!{test_block_css;
         "hello: there;" => block_css[];
         "${ $hello }: there;" => block_css[];
@@ -494,6 +623,17 @@ mod test {
         "{ hello: there; }" => block[];
         "{ ${ $hello }: there; }" => block[];
         "{ ${ $hello }: the${ 2px }re; }" => block[];
+    }
+
+    process_test!{test_empty_block_e;
+        ".some-class {
+            /* empty */
+        }" =>
+        e(Expr::Block(Block{
+            selector: vec![CSSBit::Str(s(".some-class "))],
+            scope: hash_map![],
+            css: vec![]
+        }));
     }
 
     parse_test!{test_block_more;
