@@ -1,12 +1,7 @@
 use std::collections::HashMap;
-use chomp::types::numbering::Numbering;
-use chomp::types::Buffer;
 use list::List;
 use std::path::PathBuf;
 use std::fmt;
-
-//re-export this:
-pub use chomp::types::numbering::InputPosition;
 
 /// Primitive values:
 #[derive(PartialEq,Debug,Clone)]
@@ -89,11 +84,19 @@ pub enum Expr {
 
 /// An Expr paired with the start and end position
 /// of the underlying text:
-#[derive(PartialEq,Debug,Clone)]
+#[derive(Debug,Clone)]
 pub struct Expression {
     pub start: Position,
     pub end: Position,
     pub expr: Expr
+}
+
+// this is so that we can compare expressions, ignoring
+// their positions.
+impl PartialEq for Expression {
+    fn eq(&self, other:&Self) -> bool {
+        self.expr.eq(&other.expr)
+    }
 }
 
 /// Wrap our primfuncs into a struct so that we can implement basic
@@ -165,23 +168,6 @@ pub struct Position(pub usize);
 impl Position {
     pub fn new() -> Position {
         Position(0)
-    }
-}
-
-/// by implementing chomp's numbering trait for our Position struct,
-/// we can use it inside an InputPosition struct to magically endow our
-/// inputs with valid positional information.
-impl Numbering for Position {
-    type Token = char;
-
-    fn update<B>(&mut self, b: &B) where B: Buffer<Token=Self::Token> {
-        b.iterate(|c| {
-            self.0 += 1
-        });
-    }
-
-    fn add(&mut self, t: Self::Token) {
-        self.0 += 1;
     }
 }
 

@@ -25,7 +25,7 @@ fn expression(rule: Token<Rule>, expr: Expr) -> Expression {
 
 // a quick struct to let us build up a linkedlist of block inner pieces:
 #[derive(Clone,Debug,PartialEq)]
-enum BlockInner {
+pub enum BlockInner {
     Scope(String,Expression),
     CSS(CSSEntry)
 }
@@ -34,13 +34,19 @@ impl_rdp! {
     grammar! {
         expression = {
             { block | string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor }
-            infix0 = { ["||"] }
-            infix1 = { ["&&"] }
-            infix2 = { ["=="] | ["!="] | [">="] | ["<="] | [">"] | ["<"] }
-            infix3 = { ["+"] | ["-"] }
-            infix4 = { ["*"] | ["/"] }
-            infix5 = {< ["^"] }
+            infix0 = { infix0_op }
+            infix1 = { infix1_op }
+            infix2 = { infix2_op }
+            infix3 = { infix3_op }
+            infix4 = { infix4_op }
+            infix5 = {< infix5_op }
         }
+        infix0_op = { ["||"] }
+        infix1_op = { ["&&"] }
+        infix2_op = { ["=="] | ["!="] | [">="] | ["<="] | [">"] | ["<"] }
+        infix3_op = { ["+"] | ["-"] }
+        infix4_op = { ["*"] | ["/"] }
+        infix5_op = { ["^"] }
 
         block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression )* ~ ["}"] }
 
@@ -63,7 +69,7 @@ impl_rdp! {
 
             prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
             prefix_application_fn = { ["-"] | ["!"] }
-            prefix_application_arg = !@{ paren_expression | function_application | variable_accessor }
+            prefix_application_arg = !@{ paren_expression | application | variable_accessor }
 
             function_application = { function_application_fn ~ ["("] ~ function_application_args ~ [")"] }
             function_application_fn = { variable_accessor | paren_expression }
@@ -75,7 +81,7 @@ impl_rdp! {
         variable_accessor = { variable ~ ( ["."] ~ variable_name )* }
         if_then_else = { ["if"] ~ expression ~ ["then"] ~ expression ~ ["else"] ~ expression }
 
-        function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ expression }
+        function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ function_expression }
             function_args = { variable ~ ( [","] ~ variable )* }
             function_expression = { expression }
 
@@ -102,9 +108,9 @@ impl_rdp! {
     process!{
         main(&self) -> Expression {
             // recursing rules:
-            (rule:expression, expression:main()) =>
+            (_:expression, expression:main()) =>
                 expression,
-            (rule:paren_expression, expression: main()) =>
+            (_:paren_expression, expression: main()) =>
                 expression,
             // infix precedence parsing:
             (rule:infix0, expr:_infix()) =>
@@ -200,7 +206,7 @@ impl_rdp! {
                     args: vec![arg]
                 }
             },
-            (_:function_application, _:function_application_fn, func:main(), _:function_application_args, args:_application_args()) => {
+            (_:function_application, _:function_application_fn, func:main(), args:_application_args()) => {
                 Expr::App{
                     expr: Box::new(func),
                     args: args.into_iter().collect::<Vec<Expression>>()
@@ -208,6 +214,9 @@ impl_rdp! {
             }
         }
         _application_args(&self) -> LinkedList<Expression> {
+            (_:function_application_args, args:_application_args()) => {
+                args
+            },
             (_:function_application_arg, expr:main(), mut tail: _application_args()) => {
                 tail.push_front(expr);
                 tail
@@ -262,7 +271,7 @@ impl_rdp! {
             }
         }
         _block_inner(&self) -> LinkedList<BlockInner> {
-            (_:block_assignment, _:block_variable_assign, &var:variable, expr:main(), mut tail:_block_inner()) => {
+            (_:block_assignment, _:block_variable_assign, _:variable, &var:variable_name, expr:main(), mut tail:_block_inner()) => {
                 tail.push_front( BlockInner::Scope(var.to_owned(),expr) );
                 tail
             },
@@ -350,6 +359,7 @@ mod test {
         // create test function:
         ( $func:ident; $($rest:tt)+ ) => (
             #[test]
+            #[allow(unused)]
             fn $func() {
                 use std::fmt::Write;
                 let mut errors = String::new();
@@ -383,25 +393,13 @@ mod test {
 
     }
 
-    // same as PartialEq, except we ignore positions in Expressions.
-    // this is used so that we can compare them in process_test, below.
-    trait TestEquality: PartialEq {
-        fn test_equals(&self, t2: &Self) -> bool {
-            self.eq(t2)
-        }
-    }
-    impl TestEquality for Expression {
-        fn test_equals(&self, t2: &Expression) -> bool {
-            self.expr.eq(&t2.expr)
-        }
-    }
-
     // test the processing aspect:
     macro_rules! process_test {
 
         // create test function:
         ( $func:ident; $($rest:tt)+ ) => (
             #[test]
+            #[allow(unused)]
             fn $func() {
                 use std::fmt::Write;
                 let mut errors = String::new();
@@ -417,15 +415,38 @@ mod test {
         // run a test:
         ( __SINGLE ($errors:ident) $input:expr => $output:expr; $($rest:tt)* ) => (
             {
+
+                use std::panic;
+
                 let mut parser = Rdp::new(StringInput::new($input));
                 if !parser.expression() {
-                     writeln!(&mut $errors, "ERROR: processor failed to parse expression!\n - input: {:?}\n - expected: {:?}", $input, $output);
+                     writeln!(&mut $errors, "\nERROR: processor failed to parse expression!\n - input: {:?}\n - expected: {:?}", $input, $output);
+                     return
                 }
-                let expr = parser.main();
 
-                if !expr.test_equals(&$output) {
-                    writeln!(&mut $errors, "ERROR: exprs did not match!\n - expected: {:?}\n - got: {:?}\n - tokens: {:?}", $output, expr, parser.queue());
-                }
+                let res = panic::catch_unwind(panic::AssertUnwindSafe(|| parser.main()));
+                match res {
+                    Ok(expr) => {
+                        if !expr.eq(&$output) {
+                            writeln!(&mut $errors,
+                                "\nERROR: exprs did not match!\n - input: {:?}\n - expected: {:?}\n - got: {:?}\n - tokens: {:?}",
+                                $input,
+                                $output,
+                                expr,
+                                parser.queue()
+                            );
+                        }
+                    },
+                    Err(_) => {
+                        writeln!(&mut $errors,
+                            "\nERROR: process panic!\n - input: {:?}\n - expected: {:?}\n - tokens: {:?}",
+                            $input,
+                            $output,
+                            parser.queue()
+                        );
+                    }
+                };
+
             }
             process_test!( __SINGLE ($errors) $($rest)*);
         )
@@ -441,7 +462,7 @@ mod test {
         "$_hello" => expression[];
     }
 
-    process_test!{test_Variable_e;
+    process_test!{test_variable_e;
         "$hello" => e(Expr::Var(s("hello"), vec![]));
         "$hello.there" => e(Expr::Var(s("hello"), vec![s("there")]));
         "$hello.there.you" => e(Expr::Var(s("hello"), vec![s("there"), s("you")]));
@@ -556,6 +577,11 @@ mod test {
                 expr: var("!"),
                 args: vec![ e(Expr::Var(s("hello"),vec![])) ]
             });
+        "!$hello.there" =>
+            e(Expr::App{
+                expr: var("!"),
+                args: vec![ e(Expr::Var(s("hello"),vec![s("there")])) ]
+            });
         "!$hello()" =>
             e(Expr::App{
                 expr: var("!"),
@@ -629,11 +655,105 @@ mod test {
         ".some-class {
             /* empty */
         }" =>
-        e(Expr::Block(Block{
-            selector: vec![CSSBit::Str(s(".some-class "))],
-            scope: hash_map![],
-            css: vec![]
-        }));
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![],
+                css: vec![]
+            }));
+    }
+
+    process_test!{test_block_e;
+        ".some-class {
+            $hello: 2px;
+        }" =>
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![
+                    s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
+                ],
+                css: vec![]
+            }));
+        ".some-class {
+            $hello: ($a, $b) => true;
+        }" =>
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![
+                    s("hello") => e(Expr::Func{
+                        inputs: vec![s("a"), s("b")],
+                        scope: Scope::new(),
+                        output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                    })
+                ],
+                css: vec![]
+            }));
+        ".some-class {
+            $hello: { };
+        }" =>
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![
+                    s("hello") => e(Expr::Block(Block{
+                        selector: vec![],
+                        scope: hash_map![],
+                        css: vec![]
+                    }))
+                ],
+                css: vec![]
+            }));
+        ".some-class {
+            ${ $hello };
+        }" =>
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![],
+                css: vec![
+                    CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+                ]
+            }));
+        ".some-class {
+            $hello: ($a, $b) => true;
+            ${ $hello };
+        }" =>
+            e(Expr::Block(Block{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![
+                    s("hello") => e(Expr::Func{
+                        inputs: vec![s("a"), s("b")],
+                        scope: Scope::new(),
+                        output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                    })
+                ],
+                css: vec![
+                    CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+                ]
+            }));
+        "{
+            border: 1px solid black;
+            {
+                lark: another thing hereee;
+            }
+        }" =>
+            e(Expr::Block(Block{
+                scope: hash_map![],
+                selector: vec![],
+                css: vec![
+                    CSSEntry::KeyVal{
+                        key: vec![CSSBit::Str(s("border"))],
+                        val: vec![CSSBit::Str(s("1px solid black"))]
+                    },
+                    CSSEntry::Expr(e(Expr::Block(Block{
+                        scope: hash_map![],
+                        selector: vec![],
+                        css: vec![
+                            CSSEntry::KeyVal{
+                                key: vec![CSSBit::Str(s("lark"))],
+                                val: vec![CSSBit::Str(s("another thing hereee"))]
+                            }
+                        ]
+                    })))
+                ]
+            }));
     }
 
     parse_test!{test_block_more;
