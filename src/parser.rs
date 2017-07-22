@@ -296,7 +296,7 @@ impl_rdp! {
             }
         }
         _block_css(&self) -> CSSEntry {
-            (key:_block_css_key(), val:_block_css_val()) => {
+            (_:block_css_key, key:_block_css_key(), _:block_css_value, val:_block_css_val()) => {
                 CSSEntry::KeyVal{
                     key: key.into_iter().collect::<Vec<CSSBit>>(),
                     val: val.into_iter().collect::<Vec<CSSBit>>()
