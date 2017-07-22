@@ -412,7 +412,7 @@ mod test {
 
         ( __SINGLE ($errors:ident) ) => ();
 
-        // run a test:
+        // run a test to see whether the string on the left is turned into the expression on the right:
         ( __SINGLE ($errors:ident) $input:expr => $output:expr; $($rest:tt)* ) => (
             {
 
@@ -446,6 +446,56 @@ mod test {
                         );
                     }
                 };
+
+            }
+            process_test!( __SINGLE ($errors) $($rest)*);
+        );
+
+        // run a test to see whether the string on the left is turned into the same expression as the string on the right:
+        ( __SINGLE ($errors:ident) $a:expr , $b:expr; $($rest:tt)* ) => (
+            {
+
+                use std::panic;
+
+                let mut parser1 = Rdp::new(StringInput::new($a));
+                if !parser1.expression() {
+                     writeln!(&mut $errors, "\nERROR: cmp: processor failed to parse expression!\n - input: {:?}", $a);
+                     return
+                }
+                let mut parser2 = Rdp::new(StringInput::new($b));
+                if !parser2.expression() {
+                     writeln!(&mut $errors, "\nERROR: cmp: processor failed to parse expression!\n - input: {:?}", $b);
+                     return
+                }
+
+                let res1 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser1.main()));
+                let res2 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser2.main()));
+
+                if res1.is_err() {
+                    writeln!(&mut $errors,
+                        "\nERROR: cmp: failed to parse left string into an expression!\n - input: {:?}\n - tokens: {:?}",
+                        $a,
+                        parser1.queue()
+                    );
+                }
+                if res2.is_err() {
+                    writeln!(&mut $errors,
+                        "\nERROR: cmp: failed to parse right string into an expression!\n - input: {:?}\n - tokens: {:?}",
+                        $b,
+                        parser2.queue()
+                    );
+                }
+
+                let res1e = res1.unwrap();
+                let res2e = res2.unwrap();
+
+                if !res1e.eq(&res2e) {
+                    writeln!(&mut $errors,
+                        "\nERROR: cmp: exprs did not match!\n - left: {:?}\n - right: {:?}",
+                        res1e,
+                        res2e
+                    );
+                }
 
             }
             process_test!( __SINGLE ($errors) $($rest)*);
@@ -487,6 +537,16 @@ mod test {
         "0.12" => e(Expr::Prim(Primitive::Unit(0.12,s(""))));
         "0%" => e(Expr::Prim(Primitive::Unit(0.0,s("%"))));
         "100.0px" => e(Expr::Prim(Primitive::Unit(100.0,s("px"))));
+    }
+
+    process_test!{test_precedence_e;
+        "1 + 2 + 3"         , "(1 + 2) + 3";
+        "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
+        "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
+        "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
+        "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
+        "-1+2 + 3"          , "(-1) + 2 + 3";
+        "1 + -2 +3"         , "1 + (-2) + 3";
     }
 
     parse_test!{test_if_then_else;
