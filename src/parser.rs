@@ -99,9 +99,9 @@ impl_rdp! {
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
 
         whitespace = _{ ([" "] | ["\n"] | ["\t"] | ["\r"])+ }
-        comment = _{ block_comment | eol_comment }
+        comment = _{ block_comment } //| eol_comment }
             block_comment = _{ ["/*"] ~ (block_comment | !(block_comment | ["*/"]) ~ any)* ~ ["*/"] }
-            eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
+            //eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
 
     }
 
@@ -784,15 +784,47 @@ mod test {
             border-radius: 10px;
         }" => block[];
         ".some-class:not(:last-child) {
-            // a comment till end of line
-            // lark
-            // woop
+            /* a comment till end of line
+             * lark
+             * woop
+             */
             & .a-sub-class .more.another, .sub-clas-two { color: red; $subThing: -2px + 4px; }
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
         }" => block[];
         "{ $lark: {}; .stuff {} }" => block[];
         "{ .stuff {} $lark: {}; }" => block[];
+        ".some-class:not(:last-child) {
+
+            /* A comment! */
+            $hello: ($a, $b) => $a + $b;
+            $another: 2;
+
+            $lark: {
+                $sub1: 2px; /* another comment! */
+            };
+
+            ${ $hello(2px, 5px) };
+            {
+                border: 1px solid black;
+                {
+                    lark: another thing hereee;
+                }
+            }
+
+            ${ if true then $hello else $bye };
+
+            & .a-sub-class .more.another, .sub-clas-two {
+                $subThing: -2px + 4px;
+                color: red;
+            }
+
+            -moz-background-color:
+                            1px solid blue; /* comments everywhere... */
+            border-radius: 10px;
+
+            $more: $lark.sub1;
+        }" => block[];
     }
 
 }
