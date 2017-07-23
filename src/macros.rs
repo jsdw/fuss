@@ -30,21 +30,22 @@ macro_rules! expression_from {
 
 /// make it a little easier to build up a scope of primitive functions
 macro_rules! scope {
-    ( $name:ident; $($key:expr => $func:expr);*; ) => (
-        lazy_static!{
-            pub static ref $name: HashMap<String,Expression> = {
-                let mut map = HashMap::new();
-                $(
-                    map.insert($key.to_owned(), Expression{
-                        start: Position::new(),
-                        end: Position::new(),
-                        expr: Expr::PrimFunc(PrimFunc($func))
-                    });
-                )*
-                map
-            };
-        }
-    )
+    ( $($key:expr => $func:expr);+ ) => ({
+
+        use std::collections::HashMap;
+        use types::Scope;
+
+        let mut map = HashMap::new();
+        $(
+            map.insert($key.to_owned(), Expression{
+                start: Position::new(),
+                end: Position::new(),
+                expr: Expr::PrimFunc(PrimFunc($func))
+            });
+        )*
+        Scope::from(map)
+
+    })
 }
 
 // make defining hash maps a little easier:

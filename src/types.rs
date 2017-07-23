@@ -128,6 +128,9 @@ impl Scope {
     pub fn new() -> Self {
         Scope(List::new().push(HashMap::new()))
     }
+    pub fn from(map: HashMap<String,Expression>) -> Self {
+        Scope(List::new().push(map))
+    }
 
     /// lookup a value in the scope:
     pub fn find<'a>(&'a self, name: &str) -> Option<&'a Expression> {

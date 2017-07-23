@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::Read;
 use evaluator::eval;
 use parser::parse;
+use std::path::PathBuf;
+use std::collections::HashMap;
 
 /// cast an expression to a boolean as best we can
 pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
@@ -43,25 +45,31 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     }
 
     // try to open the found file:
+    import_path(&final_path, &context.root)
+
+}
+
+pub fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
+
     let mut file_contents = String::new();
-    let mut file = File::open(&final_path).map_err(|_| ErrorType::CannotOpenFile(final_path.clone()))?;
-    file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(final_path.clone()))?;
+    let mut file = File::open(&path).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
+    file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(path.clone()))?;
 
     // try to parse and eval the contents:
     let context = Context{
-        path: final_path.clone(),
-        root: context.root.clone()
+        path: path.clone(),
+        root: root.clone()
     };
 
     // let res = parse(&input);
     let res = match parse(&file_contents) {
-        Ok(expr) => eval(expr, Scope::new(), &context).map_err(|mut e| {
-            e.file = final_path;
+        Ok(expr) => eval(expr, super::get_prelude(), &context).map_err(|mut e| {
+            e.file = path.clone();
             e
         }),
         Err(err) => Err(Error{
             ty: err,
-            file: final_path,
+            file: path.clone(),
             start: Position::new(),
             end: Position::new()
         })

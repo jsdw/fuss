@@ -427,7 +427,7 @@ mod test {
                 let res = panic::catch_unwind(panic::AssertUnwindSafe(|| parser.main()));
                 match res {
                     Ok(expr) => {
-                        if !expr.eq(&$output) {
+                        if expr != $output {
                             writeln!(&mut $errors,
                                 "\nERROR: exprs did not match!\n - input: {:?}\n - expected: {:?}\n - got: {:?}\n - tokens: {:?}",
                                 $input,
@@ -489,7 +489,7 @@ mod test {
                 let res1e = res1.unwrap();
                 let res2e = res2.unwrap();
 
-                if !res1e.eq(&res2e) {
+                if res1e != res2e {
                     writeln!(&mut $errors,
                         "\nERROR: cmp: exprs did not match!\n - left: {:?}\n - right: {:?}",
                         res1e,
@@ -537,16 +537,6 @@ mod test {
         "0.12" => e(Expr::Prim(Primitive::Unit(0.12,s(""))));
         "0%" => e(Expr::Prim(Primitive::Unit(0.0,s("%"))));
         "100.0px" => e(Expr::Prim(Primitive::Unit(100.0,s("px"))));
-    }
-
-    process_test!{test_precedence_e;
-        "1 + 2 + 3"         , "(1 + 2) + 3";
-        "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
-        "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
-        "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
-        "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
-        "-1+2 + 3"          , "(-1) + 2 + 3";
-        "1 + -2 +3"         , "1 + (-2) + 3";
     }
 
     parse_test!{test_if_then_else;
@@ -603,6 +593,17 @@ mod test {
         "20 / 40" => expression[];
         "20 * 40" => expression[];
         "20 - 40" => expression[];
+    }
+
+    process_test!{test_precedence_e;
+        "1 + 2 + 3"         , "(1 + 2) + 3";
+        "1 + 2 * 3 + 4"     , "1 + (2 * 3) + 4";
+        "1 + 2 * 3 * 4 + 5" , "1 + (2 * 3 * 4) + 5";
+        "1 + 2 * 3 * 4 + 5" , "(1 + ((2 * 3) * 4)) + 5";
+        "1 * 2 / 3 * 4"     , "((1 * 2) / 3) * 4";
+        "-1+2 + 3"          , "(-1) + 2 + 3";
+        "1 + -2 +3"         , "1 + (-2) + 3";
+        "3 + 2 ^ 2 ^ 2 ^ 2" , "3 + (2 ^ (2 ^ (2 ^ 2)))";
     }
 
     parse_test!{test_func_applications;
