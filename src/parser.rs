@@ -839,16 +839,6 @@ mod test {
                                 val: vec![CSSBit::Str(s("1"))]
                             }
                         ]
-                    }))),
-                    CSSEntry::Expr(e(Expr::Block(Block{
-                        scope: hash_map![],
-                        selector: vec![CSSBit::Str(s(".more "))],
-                        css: vec![
-                            CSSEntry::KeyVal{
-                                key: vec![CSSBit::Str(s("c"))],
-                                val: vec![CSSBit::Str(s("1"))]
-                            }
-                        ]
                     })))
                 ]
             }));
