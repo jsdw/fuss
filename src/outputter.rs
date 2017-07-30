@@ -8,6 +8,7 @@ pub fn to_css(block: &NestedSimpleBlock) -> String {
     s
 }
 
+/// Recurse over NestedSimpleBlocks and push plain css to our buffer.
 fn flatten(buf: &mut String, selector: &str, block: &NestedSimpleBlock) {
 
     if block.css.len() == 0 {

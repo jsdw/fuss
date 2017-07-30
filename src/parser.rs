@@ -48,7 +48,7 @@ impl_rdp! {
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
 
-        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression )* ~ ["}"] }
+        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression)* ~ ["}"] }
 
             block_expression = { (block_interpolated_expression | variable) ~ [";"] | block_nested }
             block_nested = { block }
@@ -100,7 +100,7 @@ impl_rdp! {
 
         whitespace = _{ ([" "] | ["\n"] | ["\t"] | ["\r"])+ }
         comment = _{ block_comment } //| eol_comment }
-            block_comment = _{ ["/*"] ~ (block_comment | !(block_comment | ["*/"]) ~ any)* ~ ["*/"] }
+            block_comment = _{ ["/*"] ~ (block_comment | ( !(block_comment | ["*/"]) ~ any))* ~ ["*/"] }
             //eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
 
     }
@@ -810,6 +810,43 @@ mod test {
                             CSSEntry::KeyVal{
                                 key: vec![CSSBit::Str(s("lark"))],
                                 val: vec![CSSBit::Str(s("another thing hereee"))]
+                            }
+                        ]
+                    })))
+                ]
+            }));
+        "{ .hello { a:1; } .another { b:1; } }" =>
+            e(Expr::Block(Block{
+                scope: hash_map![],
+                selector: vec![],
+                css: vec![
+                    CSSEntry::Expr(e(Expr::Block(Block{
+                        scope: hash_map![],
+                        selector: vec![CSSBit::Str(s(".hello "))],
+                        css: vec![
+                            CSSEntry::KeyVal{
+                                key: vec![CSSBit::Str(s("a"))],
+                                val: vec![CSSBit::Str(s("1"))]
+                            }
+                        ]
+                    }))),
+                    CSSEntry::Expr(e(Expr::Block(Block{
+                        scope: hash_map![],
+                        selector: vec![CSSBit::Str(s(".another "))],
+                        css: vec![
+                            CSSEntry::KeyVal{
+                                key: vec![CSSBit::Str(s("b"))],
+                                val: vec![CSSBit::Str(s("1"))]
+                            }
+                        ]
+                    }))),
+                    CSSEntry::Expr(e(Expr::Block(Block{
+                        scope: hash_map![],
+                        selector: vec![CSSBit::Str(s(".more "))],
+                        css: vec![
+                            CSSEntry::KeyVal{
+                                key: vec![CSSBit::Str(s("c"))],
+                                val: vec![CSSBit::Str(s("1"))]
                             }
                         ]
                     })))

@@ -49,7 +49,7 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 
 }
 
-pub fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
+fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
 
     let mut file_contents = String::new();
     let mut file = File::open(&path).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
@@ -79,4 +79,8 @@ pub fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
     res.map_err(|e| ErrorType::ImportError(Box::new(e)))
         .map(|e| e.expr)
 
+}
+
+pub fn import_root(path: &PathBuf) -> PrimRes {
+    import_path(path, path)
 }
