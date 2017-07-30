@@ -8,8 +8,3 @@ args:
         help: The root FUSS file to compile
         required: true
         takes_value: true
-    - output:
-        short: o
-        help: The output CSS file
-        required: true
-        takes_value: true

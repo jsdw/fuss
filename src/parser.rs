@@ -33,7 +33,7 @@ pub enum BlockInner {
 impl_rdp! {
     grammar! {
         expression = {
-            { block | string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor }
+            { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
             infix0 = { infix0_op }
             infix1 = { infix1_op }
             infix2 = { infix2_op }
@@ -48,7 +48,10 @@ impl_rdp! {
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
 
-        block = { block_selector ~ ["{"] ~ (block_assignment | block_css | block_expression)* ~ ["}"] }
+        block = { block_selector ~ block_open ~ (block_assignment | block_css | block_expression)* ~ block_close }
+
+            block_open = { ["{"] }
+            block_close = { ["}"] }
 
             block_expression = { (block_interpolated_expression | variable) ~ [";"] | block_nested }
             block_nested = { block }
@@ -240,7 +243,7 @@ impl_rdp! {
             }
         }
         _block(&self) -> Expr {
-            (_:block_selector, selector:_block_selector(), rest:_block_inner()) => {
+            (_:block_selector, selector:_block_selector(), _:block_open, rest:_block_inner(), _:block_close) => {
                 let selector = selector.into_iter().collect::<Vec<CSSBit>>();
                 let mut scope = HashMap::new();
                 let mut css = vec![];

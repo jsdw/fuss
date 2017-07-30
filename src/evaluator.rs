@@ -135,7 +135,9 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                     }
 
                 }
-                _ => err!(func, NotAFunction)
+                _ => {
+                    err!(func, NotAFunction)
+                }
             }
 
         },

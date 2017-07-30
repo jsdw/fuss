@@ -19,6 +19,7 @@ use prelude::import::import_root;
 use std::convert::From;
 use std::path::PathBuf;
 use types::*;
+use std::io::{self, Write};
 
 fn main() {
 
@@ -27,23 +28,23 @@ fn main() {
     let yaml = load_yaml!("cli.yml");
     let matches = App::from_yaml(yaml).get_matches();
 
-    let input = matches.value_of("input").unwrap();
-    let output = matches.value_of("output").unwrap();
-
     // import the FUSS file, compiling and evaluating it.
+    let input = matches.value_of("input").unwrap();
     let res = import_root( &PathBuf::from(input) );
 
     match res {
         Err(e) => {
-            println!("AAH! {:?}", e);
+            eprintln!("Error: {:?}", e);
         },
         Ok(Expr::NestedSimpleBlock(block)) => {
             let css = outputter::to_css(&block);
-            println!("block: {:?}", block);
-            println!("OK! {}", css);
+            let stdout = io::stdout();
+            let mut handle = stdout.lock();
+            handle.write(css.as_bytes());
+            handle.flush();
         },
         Ok(_) => {
-            println!("Fuss file needs to evaluate to a css block")
+            eprintln!("Fuss file needs to evaluate to a css block")
         }
     }
 

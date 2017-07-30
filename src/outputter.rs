@@ -16,6 +16,7 @@ fn flatten(buf: &mut String, selector: &str, block: &NestedSimpleBlock) {
     }
 
     let mut needs_opening = true;
+    let mut needs_closing = false;
     for entry in &block.css {
         match *entry {
             NestedCSSEntry::KeyVal{ ref key, ref val } => {
@@ -29,15 +30,19 @@ fn flatten(buf: &mut String, selector: &str, block: &NestedSimpleBlock) {
                 *buf += ": ";
                 *buf += val;
                 *buf += ";\n";
+                needs_closing = true;
             },
             NestedCSSEntry::Block(ref boxed_block) => {
-                *buf += "}\n";
-                needs_opening = true;
+                if needs_closing {
+                    *buf += "}\n";
+                }
                 flatten( buf, &merge_selectors(selector, &block.selector), &boxed_block );
+                needs_opening = true;
+                needs_closing = false;
             }
         }
     }
-    if !needs_opening {
+    if needs_closing {
         *buf += "}\n";
     }
 
