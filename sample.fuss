@@ -1,52 +1,49 @@
-{
 
-    $hello: ($a) => $a + 2px;
-    $fn: ($a) => .hi { background-color: $a; };
-    $block: {
-        $a: .hello.there {
-            color: red;
-        };
-        $b: .another.there {
-            color: blue;
-        };
+$hello: ($a) => $a + 2px;
+$fn: ($a) => .hi { background-color: $a; };
+$block: {
+    $a: .hello.there {
+        color: red;
+    };
+    $b: .another.there {
+        color: blue;
+    };
+};
+
+$padding: 5px;
+$mixin: ($a) =>
+    ${ $a }-class {
+        color: red;
     };
 
-    $padding: 5px;
-    $mixin: ($a) =>
-        ${ $a }-class {
-            color: red;
-        };
+$mixin("-moz");
+$mixin("-webkit");
 
-    $mixin("-moz");
-    $mixin("-webkit");
+.more .bits {
+    color: red;
+    padding: $padding;
 
-    .more .bits {
-        color: red;
+    .yet.more {
+        color:blue;
         padding: $padding;
-
-        .yet.more {
-            color:blue;
-            padding: $padding;
-            .and.more {
-                color: green;
-            }
+        .and.more {
+            color: green;
         }
-
-        .hello.there {
-            opacity: 0;
-        }
-
-    }
-    .another {
-        woop: blue;
-    }
-    .hello {
-        another: ${ $hello(1px) };
-        $fn(2px);
     }
 
-    $fn(400px);
-    $block.a;
-    $block.b;
+    .hello.there {
+        opacity: 0;
+    }
 
 }
+.another {
+    woop: blue;
+}
+.hello {
+    another: ${ $hello(1px) };
+    $fn(2px);
+}
+
+$fn(400px);
+$block.a;
+$block.b;

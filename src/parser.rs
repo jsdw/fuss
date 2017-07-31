@@ -7,10 +7,10 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
     let mut parser = Rdp::new(StringInput::new(input));
 
-    if !parser.expression() {
+    if !parser.file() {
         return Err(ErrorType::NotAnExpression)
     }
-    Ok(parser.main())
+    Ok(parser.file_expression())
 
 }
 
@@ -23,6 +23,21 @@ fn expression(rule: Token<Rule>, expr: Expr) -> Expression {
     }
 }
 
+// escape a string - allow \\ and \" in a string; resulting in \ and ".
+fn escaped_string(s: &str) -> String {
+    let mut out = String::new();
+    let mut is_escaped = false;
+    for c in s.chars() {
+        if !is_escaped && c == '\\' {
+           is_escaped = true;
+        } else {
+            out.push(c);
+            is_escaped = false;
+        }
+    }
+    out
+}
+
 // a quick struct to let us build up a linkedlist of block inner pieces:
 #[derive(Clone,Debug,PartialEq)]
 pub enum BlockInner {
@@ -32,6 +47,7 @@ pub enum BlockInner {
 
 impl_rdp! {
     grammar! {
+        file = { whitespace* ~ block_inner ~ whitespace* ~ eoi }
         expression = {
             { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
             infix0 = { infix0_op }
@@ -48,9 +64,10 @@ impl_rdp! {
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
 
-        block = { block_selector ~ block_open ~ (block_assignment | block_css | block_expression)* ~ block_close }
+        block = { block_selector ~ block_open ~ block_inner ~ block_close }
 
             block_open = { ["{"] }
+            block_inner = _{ (block_assignment | block_css | block_expression)* }
             block_close = { ["}"] }
 
             block_expression = { (function_application | variable_accessor) ~ [";"] | block }
@@ -94,7 +111,7 @@ impl_rdp! {
 
         string  = @{ ["\""] ~ string_contents ~ ["\""] }
             string_contents = { (escaped_char | !(["\""] | ["\\"]) ~ any)* }
-            escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"] | ["/"] | ["b"] | ["f"] | ["n"] | ["r"] | ["t"]) }
+            escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"]) }
 
         unit = @{ number ~ number_suffix }
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
@@ -108,11 +125,16 @@ impl_rdp! {
     }
 
     process!{
-        main(&self) -> Expression {
+        file_expression(&self) -> Expression {
+            (rule:file, block:_block_inner_block()) => {
+                expression(rule, Expr::Block(block))
+            }
+        }
+        _expression(&self) -> Expression {
             // recursing rules:
-            (_:expression, expression:main()) =>
+            (_:expression, expression:_expression()) =>
                 expression,
-            (_:paren_expression, expression: main()) =>
+            (_:paren_expression, expression: _expression()) =>
                 expression,
             // infix precedence parsing:
             (rule:infix0, expr:_infix()) =>
@@ -142,7 +164,7 @@ impl_rdp! {
                 expression(rule, expr),
             // primitives:
             (rule:string, &s:string_contents) =>
-                expression(rule, Expr::Prim(Primitive::Str(s.to_owned()))),
+                expression(rule, Expr::Prim(Primitive::Str(escaped_string(s)))),
             (rule:unit, &n:number, &s:number_suffix) =>
                 expression(rule, Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() ))),
             (rule:boolean, _:boolean_true) =>
@@ -151,7 +173,7 @@ impl_rdp! {
                 expression(rule, Expr::Prim(Primitive::Bool(false))),
         }
         _infix(&self) -> Expr {
-            (left:main(), sign:_variable_expression(), right:main()) => {
+            (left:_expression(), sign:_variable_expression(), right:_expression()) => {
                 Expr::App{
                     expr: Box::new(sign),
                     args: vec![ left, right ]
@@ -169,7 +191,7 @@ impl_rdp! {
             }
         }
         _function(&self) -> Expr {
-            (_:function_args, args:_function_args(), _:function_expression, expr:main()) => {
+            (_:function_args, args:_function_args(), _:function_expression, expr:_expression()) => {
                 let arg_vec = args.into_iter().collect::<Vec<String>>();
                 Expr::Func{
                     inputs: arg_vec,
@@ -177,7 +199,7 @@ impl_rdp! {
                     scope: Scope::new()
                 }
             },
-            (_:function_expression, expr:main()) => {
+            (_:function_expression, expr:_expression()) => {
                 Expr::Func{
                     inputs: vec![],
                     output: Box::new(expr),
@@ -195,7 +217,7 @@ impl_rdp! {
             }
         }
         _if_then_else(&self) -> Expr {
-            (cond: main(), then: main(), otherwise: main()) => {
+            (cond: _expression(), then: _expression(), otherwise: _expression()) => {
                 Expr::If{
                     cond: Box::new(cond),
                     then: Box::new(then),
@@ -204,7 +226,7 @@ impl_rdp! {
             }
         }
         _application(&self) -> Expr {
-            (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:main()) => {
+            (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
                 Expr::App{
                     expr: Box::new(sign),
                     args: vec![arg]
@@ -215,7 +237,7 @@ impl_rdp! {
             }
         }
         _function_application(&self) -> Expr {
-            (_:function_application_fn, func:main(), args:_application_args()) => {
+            (_:function_application_fn, func:_expression(), args:_application_args()) => {
                 Expr::App{
                     expr: Box::new(func),
                     args: args.into_iter().collect::<Vec<Expression>>()
@@ -226,7 +248,7 @@ impl_rdp! {
             (_:function_application_args, args:_application_args()) => {
                 args
             },
-            (_:function_application_arg, expr:main(), mut tail: _application_args()) => {
+            (_:function_application_arg, expr:_expression(), mut tail: _application_args()) => {
                 tail.push_front(expr);
                 tail
             },
@@ -249,11 +271,30 @@ impl_rdp! {
             }
         }
         _block(&self) -> Expr {
-            (_:block_selector, selector:_block_selector(), _:block_open, rest:_block_inner(), _:block_close) => {
+            (_:block_selector, selector:_block_selector(), _:block_open, mut block:_block_inner_block(), _:block_close) => {
                 let selector = selector.into_iter().collect::<Vec<CSSBit>>();
+                block.selector = selector;
+                Expr::Block(block)
+            }
+        }
+        _block_selector(&self) -> LinkedList<CSSBit> {
+            (&chars:block_selector_chars, mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            (_:block_interpolated_expression, expr:_expression(), mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+        _block_inner_block(&self) -> Block {
+            (block:_block_inner()) => {
                 let mut scope = HashMap::new();
                 let mut css = vec![];
-                for val in rest.into_iter() {
+                for val in block.into_iter() {
                     match val {
                         BlockInner::Scope(key,val) => {
                             scope.insert(key,val);
@@ -263,28 +304,15 @@ impl_rdp! {
                         }
                     }
                 }
-                Expr::Block(Block{scope:scope,css:css,selector:selector})
-            }
-        }
-        _block_selector(&self) -> LinkedList<CSSBit> {
-            (&chars:block_selector_chars, mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
-                tail
-            },
-            (_:block_interpolated_expression, expr:main(), mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Expr(expr) );
-                tail
-            },
-            () => {
-                LinkedList::new()
+                Block{scope:scope,css:css,selector:vec![]}
             }
         }
         _block_inner(&self) -> LinkedList<BlockInner> {
-            (_:block_assignment, _:block_variable_assign, _:variable, &var:variable_name, expr:main(), mut tail:_block_inner()) => {
+            (_:block_assignment, _:block_variable_assign, _:variable, &var:variable_name, expr:_expression(), mut tail:_block_inner()) => {
                 tail.push_front( BlockInner::Scope(var.to_owned(),expr) );
                 tail
             },
-            (_:block_expression, expr:main(), mut tail:_block_inner()) => {
+            (_:block_expression, expr:_expression(), mut tail:_block_inner()) => {
                 tail.push_front( BlockInner::CSS( CSSEntry::Expr( expr ) ) );
                 tail
             },
@@ -305,7 +333,7 @@ impl_rdp! {
             }
         }
         _block_css_key(&self) -> LinkedList<CSSBit> {
-            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_key()) => {
+            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_key()) => {
                 tail.push_front( CSSBit::Expr(expr) );
                 tail
             },
@@ -318,7 +346,7 @@ impl_rdp! {
             }
         }
         _block_css_val(&self) -> LinkedList<CSSBit> { //TODO: FILL IN!
-            (_:block_interpolated_expression, expr:main(), mut tail:_block_css_val()) => {
+            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_val()) => {
                 tail.push_front( CSSBit::Expr(expr) );
                 tail
             },
@@ -438,7 +466,7 @@ mod test {
                         return
                     }
 
-                    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| parser.main()));
+                    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| parser._expression()));
                     match res {
                         Ok(expr) => {
                             if expr != $output {
@@ -483,8 +511,8 @@ mod test {
                         return
                     }
 
-                    let res1 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser1.main()));
-                    let res2 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser2.main()));
+                    let res1 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser1._expression()));
+                    let res2 = panic::catch_unwind(panic::AssertUnwindSafe(|| parser2._expression()));
 
                     if res1.is_err() {
                         writeln!(&mut $errors,
@@ -575,9 +603,10 @@ mod test {
             e(Expr::Prim(Primitive::Str(s("hello"))));
         r#""""# =>
             e(Expr::Prim(Primitive::Str(s(""))));
-        // TODO fix string escaping:
-        // r#""escaped \"lark\"""# =>
-        //     e(Expr::Prim(Primitive::Str(s(r#"escaped "lark""#))));
+        r#""escaped \"lark\"""# =>
+            e(Expr::Prim(Primitive::Str(s(r#"escaped "lark""#))));
+        r#"" \\lark\\ ""# =>
+            e(Expr::Prim(Primitive::Str(s(r#" \lark\ "#))));
     }
 
     parse_test!{test_functions;
@@ -855,6 +884,10 @@ mod test {
                 ]
             }));
     }
+
+    parse_test!(test_file_expression;
+        "$hello: 1px; $another: 2px;" => file[];
+    );
 
     parse_test!{test_block_more;
         "{ $hello: 1px; ${ $hello }: the${ 2px }re; }" => block[];

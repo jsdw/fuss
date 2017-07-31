@@ -52,7 +52,7 @@ Still in progress and details subject to change!
 
 - [ ] make error messages nicer
 - [ ] support colours as first class things
-- [ ] allow eliding of opening and closing `{`/`}` in new file (just pretend we're inside a block when we start parsing)
+- [x] allow eliding of opening and closing `{`/`}` in new file (just pretend we're inside a block when we start parsing)
 - [ ] cache imported files
 - [ ] prevent import loops
 - [x] no more `${}` in blocks (only in css key/val). Support `$var`, `$var.a`, `$var()`. May help avoid conflicts with css selectors, which only allow `${}`
