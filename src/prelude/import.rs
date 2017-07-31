@@ -5,7 +5,6 @@ use std::io::Read;
 use evaluator::eval;
 use parser::parse;
 use std::path::PathBuf;
-use std::collections::HashMap;
 
 /// cast an expression to a boolean as best we can
 pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {

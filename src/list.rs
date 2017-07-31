@@ -38,18 +38,18 @@ impl<T> List<T> {
         }
     }
 
-    /// return a new linked list with the front
-    /// item removed.
-    pub fn pop(&self) -> List<T> {
-        match *self.head {
-            Link::Empty => List{
-                head: self.head.clone()
-            },
-            Link::Elem(ref item) => List{
-                head: item.next.clone()
-            }
-        }
-    }
+    // /// return a new linked list with the front
+    // /// item removed.
+    // pub fn pop(&self) -> List<T> {
+    //     match *self.head {
+    //         Link::Empty => List{
+    //             head: self.head.clone()
+    //         },
+    //         Link::Elem(ref item) => List{
+    //             head: item.next.clone()
+    //         }
+    //     }
+    // }
 
     /// iterate over the items in the list
     pub fn iter(&self) -> ListIter<T> {
@@ -95,15 +95,15 @@ mod test {
         assert_eq!(b.iter().cloned().collect::<Vec<_>>(), vec![1]);
         assert_eq!(a.iter().cloned().collect::<Vec<_>>(), vec![]);
 
-        let c2 = d.pop();
-        let b2 = c.pop();
-        let a2 = a.pop();
-        let a3 = a.pop();
+        // let c2 = d.pop();
+        // let b2 = c.pop();
+        // let a2 = a.pop();
+        // let a3 = a.pop();
 
-        assert_eq!(c, c2);
-        assert_eq!(b, b2);
-        assert_eq!(a, a2);
-        assert_eq!(a, a3);
+        // assert_eq!(c, c2);
+        // assert_eq!(b, b2);
+        // assert_eq!(a, a2);
+        // assert_eq!(a, a3);
 
     }
 

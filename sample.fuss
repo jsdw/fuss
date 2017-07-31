@@ -17,8 +17,8 @@
             color: red;
         };
 
-    ${ $mixin("-moz") };
-    ${ $mixin("-webkit") };
+    $mixin("-moz");
+    $mixin("-webkit");
 
     .more .bits {
         color: red;
@@ -42,11 +42,11 @@
     }
     .hello {
         another: ${ $hello(1px) };
-        ${ $fn(2px) };
+        $fn(2px);
     }
 
-    ${ $fn(400px) };
-    ${ $block.a };
-    ${ $block.b };
+    $fn(400px);
+    $block.a;
+    $block.b;
 
 }

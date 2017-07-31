@@ -3,7 +3,6 @@ pub mod casting;
 pub mod import;
 
 use types::*;
-use std::collections::HashMap;
 
 fn get_prelude() -> Scope {
     scope!{
