@@ -1,23 +1,23 @@
 
-$hello: ($a) => $a + 2px;
-$fn: ($a) => .hi { background-color: $a; };
+$hello: ($a) => $a + 2px
+$fn: ($a) => .hi { background-color: $a; }
 $block: {
     $a: .hello.there {
         color: red;
-    };
+    }
     $b: .another.there {
         color: blue;
-    };
-};
+    }
+}; /* optional semi-colon */
 
 $padding: 5px;
 $mixin: ($a) =>
     ${ $a }-class {
         color: red;
-    };
+    }
 
-$mixin("-moz");
-$mixin("-webkit");
+$mixin("-moz")
+$mixin("-webkit")
 
 .more .bits {
     color: red;
@@ -41,9 +41,9 @@ $mixin("-webkit");
 }
 .hello {
     another: ${ $hello(1px) };
-    $fn(2px);
+    $fn(2px)
 }
 
-$fn(400px);
-$block.a;
-$block.b;
+$fn(400px)
+$block.a; /* semi-colons are optional */
+$block.b

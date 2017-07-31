@@ -70,9 +70,9 @@ impl_rdp! {
             block_inner = _{ (block_assignment | block_css | block_expression)* }
             block_close = { ["}"] }
 
-            block_expression = { (function_application | variable_accessor) ~ [";"] | block }
+            block_expression = { (function_application | variable_accessor) ~ [";"]? | block }
             block_interpolated_expression = { ["${"] ~ expression ~ ["}"] }
-            block_assignment = { block_variable_assign ~ expression ~ [";"] }
+            block_assignment = { block_variable_assign ~ expression ~ [";"]? }
                 block_variable_assign = @{ variable ~ [":"] }
 
             block_css = { block_css_key ~ [":"] ~ block_css_value ~ [";"] }
