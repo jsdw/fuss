@@ -56,5 +56,5 @@ Still in progress and details subject to change!
 - [ ] cache imported files
 - [ ] prevent import loops
 - [x] no more `${}` in blocks (only in css key/val). Support `$var`, `$var.a`, `$var()`. May help avoid conflicts with css selectors, which only allow `${}`
-- [ ] reduce reliance on semicolons. With the above, I suspect we won't need them for css block variable declarations or mixins, just for css values (allow them though)
+- [x] reduce reliance on semicolons. With the above, I suspect we won't need them for css block variable declarations or mixins, just for css values (allow them though)
 - [ ] support "//" comments (this might need a change in pest)
