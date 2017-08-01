@@ -3,51 +3,109 @@ use types::*;
 /// Take a `NestedSimpleBlock` and convert it into
 /// a valid CSS string.
 pub fn to_css(block: &NestedSimpleBlock) -> String {
-    let mut s = String::new();
-    flatten(&mut s, "", block);
-    s
+    let v = flatten("", block);
+    print_flattened(&v)
+}
+
+struct FlattenedBlock<'a> {
+    selector: String,
+    inner: Vec<(&'a str, &'a str)>
+}
+
+/// Print the flattened blocks out:
+fn print_flattened(blocks: &Vec<FlattenedBlock>) -> String {
+
+    let mut out = String::new();
+    for block in blocks {
+
+        // css keyvals aren't allowed to not have
+        // a selector; for now just ignore any that don't:
+        if block.selector.len() == 0 {
+            continue;
+        }
+
+        out += &block.selector;
+        out += " {\n";
+
+        for inner in &block.inner {
+            out += "\t";
+            out += inner.0;
+            out += ": ";
+            out += inner.1;
+            out += "\n";
+        }
+
+        out += "}\n";
+
+    }
+    out
+
 }
 
 /// Recurse over NestedSimpleBlocks and push plain css to our buffer.
-fn flatten(buf: &mut String, selector: &str, block: &NestedSimpleBlock) {
+fn flatten<'a>(selector: &str, block: &'a NestedSimpleBlock) -> Vec<FlattenedBlock<'a>> {
 
     if block.css.len() == 0 {
-        return;
+        return vec![];
     }
 
-    let mut needs_opening = true;
-    let mut needs_closing = false;
+    let mut output = vec![];
+    let this_selector = merge_selectors(selector, &block.selector);
+    let mut this_block = FlattenedBlock{
+        selector: this_selector.clone(),
+        inner: vec![]
+    };
+
     for entry in &block.css {
         match *entry {
             NestedCSSEntry::KeyVal{ ref key, ref val } => {
-                if needs_opening {
-                    needs_opening = false;
-                    *buf += &merge_selectors(selector, &block.selector);
-                    *buf += " {\n";
-                }
-                *buf += "\t";
-                *buf += key;
-                *buf += ": ";
-                *buf += val;
-                *buf += ";\n";
-                needs_closing = true;
+                this_block.inner.push((key,val));
             },
             NestedCSSEntry::Block(ref boxed_block) => {
-                if needs_closing {
-                    *buf += "}\n";
+
+                // we've seen another block, so commit our
+                // current one to the list if it's not empty:
+                if this_block.inner.len() > 0 {
+                    output.push(this_block);
+                    this_block = FlattenedBlock{
+                        selector: this_selector.clone(),
+                        inner: vec![]
+                    }
                 }
-                flatten( buf, &merge_selectors(selector, &block.selector), &boxed_block );
-                needs_opening = true;
-                needs_closing = false;
+
+                // append all blocks returned to our list:
+                let mut next_blocks = flatten(&this_block.selector, &boxed_block );
+                output.append(&mut next_blocks);
+
             }
         }
     }
-    if needs_closing {
-        *buf += "}\n";
+
+    // commit out current block to the list if it's not empty:
+    if this_block.inner.len() > 0 {
+        output.push(this_block);
     }
+
+    output
 
 }
 
+/// merge two CSS selectors together. if both are empty, return an
+/// empty string. we do our best to trim things.
 fn merge_selectors(first: &str, second: &str) -> String {
-    first.to_owned() + second
+
+    let first = first.trim();
+    let second = second.trim();
+
+    if first.len() == 0 && second.len() == 0 {
+        return String::new();
+    }
+    if first.len() == 0 {
+        return second.to_owned();
+    }
+    if second.len() == 0 {
+        return first.to_owned();
+    }
+
+    first.to_owned() + " " + second
 }

@@ -97,7 +97,7 @@ impl_rdp! {
 
         paren_expression = { ["("] ~ expression ~ [")"] }
         variable = @{ ["$"] ~ variable_name }
-        variable_accessor = { variable ~ ( ["."] ~ variable_name )* }
+        variable_accessor = @{ variable ~ ( ["."] ~ variable_name )* }
         if_then_else = { ["if"] ~ expression ~ ["then"] ~ expression ~ ["else"] ~ expression }
 
         function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ function_expression }

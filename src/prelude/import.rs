@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 /// cast an expression to a boolean as best we can
 pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
-
     if args.len() > 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
@@ -27,7 +26,7 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     // split the path into pieces, ignoring "." (stay in current dir) and "" (means more than one "/").
     let path_bits = relpath
         .split('/')
-        .filter(|&s| s == "" || s == ".")
+        .filter(|&s| s != "" && s != ".")
         .collect::<Vec<&str>>();
 
     // What path do we start at?
@@ -35,8 +34,8 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
     // Remove the filename from it
     final_path.pop();
     // Traverse the import path to turn our starting path into our final one.
-    for bit in path_bits {
-        if bit == ".." {
+    for bit in &path_bits {
+        if *bit == ".." {
             final_path.pop();
         } else {
             final_path.push(bit);
@@ -50,8 +49,19 @@ pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
 
 fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
 
+    if let None = path.file_name() {
+        return Err(ErrorType::CannotOpenFile(path.clone()));
+    }
+
     let mut file_contents = String::new();
-    let mut file = File::open(&path).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
+    let mut file = File::open(&path).or_else(|_| {
+        //failed to open; try again setting extension to .fuss
+        let mut filename = path.file_name().unwrap().to_owned();
+        filename.push(".fuss");
+        let new_path = path.with_file_name(&filename);
+        File::open(&new_path)
+    }).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
+
     file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(path.clone()))?;
 
     // try to parse and eval the contents:

@@ -1,4 +1,5 @@
 
+$other: $import("other")
 $hello: ($a) => $a + 2px
 $fn: ($a) => .hi { background-color: $a; }
 $block: {
@@ -47,3 +48,8 @@ $mixin("-webkit")
 $fn(400px)
 $block.a; /* semi-colons are optional */
 $block.b
+
+.sharks {
+    $other.another
+    margin: ${ $other.a + $other.b };
+}

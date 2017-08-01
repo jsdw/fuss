@@ -22,7 +22,17 @@ use types::*;
 use std::io::{self, Write};
 
 fn main() {
+    match run() {
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+        },
+        Ok(_) => {
+            // all done!
+        }
+    }
+}
 
+fn run() -> io::Result<()> {
     /// parse args from CLI based on our cli.yml,
     /// and get matched commands:
     let yaml = load_yaml!("cli.yml");
@@ -35,19 +45,22 @@ fn main() {
     match res {
         Err(e) => {
             eprintln!("Error: {:?}", e);
+            Ok(())
         },
         Ok(Expr::NestedSimpleBlock(block)) => {
             let css = outputter::to_css(&block);
             let stdout = io::stdout();
             let mut handle = stdout.lock();
-            handle.write(css.as_bytes());
-            handle.flush();
+
+            // these could error:
+            handle.write_all(css.as_bytes())?;
+            handle.flush()
         },
         Ok(_) => {
-            eprintln!("Fuss file needs to evaluate to a css block")
+            eprintln!("Fuss file needs to evaluate to a css block");
+            Ok(())
         }
     }
-
 }
 
 
