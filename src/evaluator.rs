@@ -151,7 +151,6 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
             match block_enum {
                 Block::KeyframesBlock(block) => {
-
                 },
                 Block::MediaBlock(block) => {
 
@@ -161,6 +160,10 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                 },
                 Block::CSSBlock(block) => {
 
+// make func to eval scope. check that it actually works. consider allowing recursion (record count?)
+// make func to eval cssbits into strings
+// reuse these in the above.
+// consider no logner using nestedSimpleBlock
                 },
             }
 
