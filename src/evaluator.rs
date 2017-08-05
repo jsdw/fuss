@@ -50,6 +50,8 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                             return err!(e, PropertyDoesNotExist(name.clone(), key));
                         }
                     }
+                } else {
+                    return err!(e, PropertyDoesNotExist(name.clone(), key));
                 }
             }
 
@@ -145,7 +147,23 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         /// For Blocks, we simplify the CSSEntry Expressions in the context of
         /// the block scope, and complain if they do not themselves resolve to blocks.
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
-        Expr::Block(block) => {
+        Expr::Block(block_enum) => {
+
+            match block_enum {
+                Block::KeyframesBlock(block) => {
+
+                },
+                Block::MediaBlock(block) => {
+
+                },
+                Block::FontFaceBlock(block) => {
+
+                },
+                Block::CSSBlock(block) => {
+
+                },
+            }
+
 
             // simplify things in the block scope against a scope including the unsimplified
             // versions of themselves. This allows variables to reference other variables defined here.
@@ -220,6 +238,17 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
     }
 
+}
+
+fn eval_block_scope(block_scope: Scope, scope: Scope, context: &Context){
+    let block_scope = scope.push(block.scope.clone());
+    let mut simplified_block_scope = HashMap::new();
+    for (name,expr) in block.scope {
+        let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
+        let simplified_expr = eval(expr,s,context)?;
+        simplified_block_scope.insert(name, simplified_expr);
+    }
+    let new_scope = scope.push(simplified_block_scope.clone());
 }
 
 #[cfg(test)]

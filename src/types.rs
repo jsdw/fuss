@@ -34,15 +34,46 @@ pub enum CSSBit {
     Expr(Expression)
 }
 
-/// represents a CSS block, along with any scope that encloses it (variable definitions).
-/// one can access their way through scopes using '.', or plonk blocks (and other valid Exprs)
-/// into other block's css.
+/// The different kind of CSS blocks that we know about
 #[derive(PartialEq,Debug,Clone)]
-pub struct Block {
+pub enum Block {
+    KeyframesBlock(KeyframesBlock),
+    MediaBlock(MediaBlock),
+    FontFaceBlock(FontFaceBlock),
+    CSSBlock(CSSBlock)
+}
+
+/// A CSS block, along with any scope that encloses it (variable definitions).
+#[derive(PartialEq,Debug,Clone)]
+pub struct CSSBlock {
     pub scope: HashMap<String,Expression>,
     pub selector: Vec<CSSBit>,
     pub css: Vec<CSSEntry>
 }
+
+/// A keyframes animation block
+#[derive(PartialEq,Debug,Clone)]
+pub struct KeyframesBlock {
+    pub scope: HashMap<String,Expression>,
+    pub name: Vec<CSSBit>,
+    pub inner: Vec<CSSEntry>
+}
+
+/// A media query block.
+#[derive(PartialEq,Debug,Clone)]
+pub struct MediaBlock {
+    pub scope: HashMap<String,Expression>,
+    pub query: Vec<CSSBit>,
+    pub css: Vec<CSSEntry>
+}
+
+/// A font face block.
+#[derive(PartialEq,Debug,Clone)]
+pub struct FontFaceBlock {
+    pub scope: HashMap<String,Expression>,
+    pub css: Vec<CSSEntry>
+}
+
 
 /// a simplified version of the above. Nothing is parsed into this type,
 /// but it is used as a simplification of Block to prevent some simplification

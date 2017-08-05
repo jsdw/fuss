@@ -40,9 +40,15 @@ fn escaped_string(s: &str) -> String {
 
 // a quick struct to let us build up a linkedlist of block inner pieces:
 #[derive(Clone,Debug,PartialEq)]
-pub enum BlockInner {
+pub enum CSSBlockInnerPiece {
     Scope(String,Expression),
     CSS(CSSEntry)
+}
+
+#[derive(Clone,Debug,PartialEq)]
+pub struct CSSBlockInner {
+    pub scope: HashMap<String,Expression>,
+    pub css: Vec<CSSEntry>
 }
 
 impl_rdp! {
@@ -64,7 +70,13 @@ impl_rdp! {
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
 
-        block = { block_selector ~ block_open ~ block_inner ~ block_close }
+
+        block = { keyframes_block | font_face_block | media_block | css_block }
+
+            keyframes_block = { ["@keyframes"] ~ block_selector ~ block_open ~ block_inner ~ block_close }
+            font_face_block = { ["@font-face"] ~ block_open ~ block_inner ~ block_close }
+            media_block = { ["@media"] ~ block_selector ~ block_open ~ block_inner ~ block_close }
+            css_block = { block_selector ~ block_open ~ block_inner ~ block_close }
 
             block_open = { ["{"] }
             block_inner = _{ (block_assignment | block_css | block_expression)* }
@@ -126,7 +138,7 @@ impl_rdp! {
 
     process!{
         file_expression(&self) -> Expression {
-            (rule:file, block:_block_inner_block()) => {
+            (rule:file, block:_css_block_inner_block()) => {
                 expression(rule, Expr::Block(block))
             }
         }
@@ -270,11 +282,62 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
+        _css_block_inner_block(&self) -> Block {
+            (inner:_css_block_inner()) => {
+                Block::CSSBlock(CSSBlock{
+                    scope:inner.scope,
+                    css:inner.css,
+                    selector:vec![]
+                })
+            }
+        }
         _block(&self) -> Expr {
-            (_:block_selector, selector:_block_selector(), _:block_open, mut block:_block_inner_block(), _:block_close) => {
-                let selector = selector.into_iter().collect::<Vec<CSSBit>>();
-                block.selector = selector;
-                Expr::Block(block)
+            (_:keyframes_block, res: _keyframes_block()) => {
+                Expr::Block(Block::KeyframesBlock(res))
+            },
+            (_:font_face_block, res: _font_face_block()) => {
+                Expr::Block(Block::FontFaceBlock(res))
+            },
+            (_:media_block, res: _media_block()) => {
+                Expr::Block(Block::MediaBlock(res))
+            },
+            (_:css_block, res: _css_block()) => {
+                Expr::Block(Block::CSSBlock(res))
+            }
+        }
+        _keyframes_block(&self) -> KeyframesBlock {
+            (name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                KeyframesBlock{
+                    name: name.into_iter().collect::<Vec<CSSBit>>(),
+                    scope: inner.scope,
+                    inner: inner.css
+                }
+            }
+        }
+        _font_face_block(&self) -> FontFaceBlock {
+            (_:block_open, inner:_css_block_inner(), _:block_close) => {
+                FontFaceBlock{
+                    scope: inner.scope,
+                    css: inner.css
+                }
+            }
+        }
+        _media_block(&self) -> MediaBlock {
+            (query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                MediaBlock{
+                    query: query.into_iter().collect::<Vec<CSSBit>>(),
+                    scope: inner.scope,
+                    css: inner.css
+                }
+            }
+        }
+        _css_block(&self) -> CSSBlock {
+            (selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                CSSBlock{
+                    selector: selector.into_iter().collect::<Vec<CSSBit>>(),
+                    scope: inner.scope,
+                    css: inner.css
+                }
             }
         }
         _block_selector(&self) -> LinkedList<CSSBit> {
@@ -290,34 +353,37 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
-        _block_inner_block(&self) -> Block {
-            (block:_block_inner()) => {
+        _css_block_inner(&self) -> CSSBlockInner {
+            (inner: _css_block_inner_pieces()) => {
                 let mut scope = HashMap::new();
                 let mut css = vec![];
-                for val in block.into_iter() {
+                for val in inner.into_iter() {
                     match val {
-                        BlockInner::Scope(key,val) => {
+                        CSSBlockInnerPiece::Scope(key,val) => {
                             scope.insert(key,val);
                         },
-                        BlockInner::CSS(entry) => {
+                        CSSBlockInnerPiece::CSS(entry) => {
                             css.push(entry);
                         }
                     }
                 }
-                Block{scope:scope,css:css,selector:vec![]}
+                CSSBlockInner{
+                    scope: scope,
+                    css: css
+                }
             }
         }
-        _block_inner(&self) -> LinkedList<BlockInner> {
-            (_:block_assignment, _:block_variable_assign, _:variable, &var:variable_name, expr:_expression(), mut tail:_block_inner()) => {
-                tail.push_front( BlockInner::Scope(var.to_owned(),expr) );
+        _css_block_inner_pieces(&self) -> LinkedList<CSSBlockInnerPiece> {
+            (_:block_assignment, _:block_variable_assign, _:variable, &var:variable_name, expr:_expression(), mut tail:_css_block_inner_pieces()) => {
+                tail.push_front( CSSBlockInnerPiece::Scope(var.to_owned(),expr) );
                 tail
             },
-            (_:block_expression, expr:_expression(), mut tail:_block_inner()) => {
-                tail.push_front( BlockInner::CSS( CSSEntry::Expr( expr ) ) );
+            (_:block_expression, expr:_expression(), mut tail:_css_block_inner_pieces()) => {
+                tail.push_front( CSSBlockInnerPiece::CSS( CSSEntry::Expr( expr ) ) );
                 tail
             },
-            (_:block_css, entry:_block_css(), mut tail:_block_inner()) => {
-                tail.push_front( BlockInner::CSS( entry ) );
+            (_:block_css, entry:_block_css(), mut tail:_css_block_inner_pieces()) => {
+                tail.push_front( CSSBlockInnerPiece::CSS( entry ) );
                 tail
             },
             () => {
