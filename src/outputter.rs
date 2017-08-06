@@ -50,54 +50,55 @@ fn flatten<'a>(selector: &str, block_enum: &'a Block) -> Vec<FlattenedBlock<'a>>
 
         Block::CSSBlock(ref block) => {
 
-            if block.css.len() == 0 {
-                return vec![];
-            }
+            // if block.css.len() == 0 {
+            //     return vec![];
+            // }
 
-            let this_selector = merge_selectors(selector, &block.selector);
-            let mut this_block = FlattenedBlock{
-                selector: this_selector.clone(),
-                inner: vec![]
-            };
+            // let this_selector = merge_selectors(selector, &block.selector);
+            // let mut this_block = FlattenedBlock{
+            //     selector: this_selector.clone(),
+            //     inner: vec![]
+            // };
 
-            for entry in &block.css {
-                match *entry {
-                    NestedCSSEntry::KeyVal{ ref key, ref val } => {
-                        this_block.inner.push((key,val));
-                    },
-                    NestedCSSEntry::Block(ref boxed_block) => {
+            // for entry in &block.css {
+            //     match *entry {
+            //         CSSEntry::KeyVal{ ref key, ref val } => {
+            //             this_block.inner.push((key,val));
+            //         },
+            //         CSSEntry::Expr(ref expr) => {
 
-                        // we've seen another block, so commit our
-                        // current one to the list if it's not empty:
-                        if this_block.inner.len() > 0 {
-                            output.push(this_block);
-                            this_block = FlattenedBlock{
-                                selector: this_selector.clone(),
-                                inner: vec![]
-                            }
-                        }
+            //             // we've seen another block, so commit our
+            //             // current one to the list if it's not empty:
+            //             if this_block.inner.len() > 0 {
+            //                 output.push(this_block);
+            //                 this_block = FlattenedBlock{
+            //                     selector: this_selector.clone(),
+            //                     inner: vec![]
+            //                 }
+            //             }
 
-                        // append all blocks returned to our list:
-                        let mut next_blocks = flatten(&this_block.selector, &boxed_block );
-                        output.append(&mut next_blocks);
+            //             // append all blocks returned to our list:
+            //             let mut next_blocks = flatten(&this_block.selector, &boxed_block );
+            //             output.append(&mut next_blocks);
 
-                    }
-                }
-            }
+            //         }
+            //     }
+            // }
 
-            // commit out current block to the list if it's not empty:
-            if this_block.inner.len() > 0 {
-                output.push(this_block);
-            }
+            // // commit out current block to the list if it's not empty:
+            // if this_block.inner.len() > 0 {
+            //     output.push(this_block);
+            // }
 
         },
 
         _ => {
-            panic!("AAH!");
+            // ignore anything we don't know about yet
+            panic!("Don't know how to output: {:?}", block_enum)
         }
 
     };
-    ouYput
+    output
 
 }
 

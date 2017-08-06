@@ -4,8 +4,6 @@ use std::collections::HashMap;
 
 pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
-    use types::Primitive::*;
-
     match e.expr {
 
         /// We don't need to simplify primitives; they don't get any simpler!
@@ -14,9 +12,6 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         /// primitive functions are essentailly black boxes that we pass exprs into
         /// and get some result out; we can't simplify them.
         Expr::PrimFunc(..) => Ok(e),
-
-        /// This is our target output, so we can't simplify it further
-        Expr::NestedSimpleBlock(_) => Ok(e),
 
         /// Variables: replace these with the Expresssion on scope that the
         /// variable points to. Assume anything on scope is already simplified
@@ -41,8 +36,8 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
             // if asked to, try and dig into the variable, failing
             // as soon as we don't have a scope to dig into any more.
             for key in rest {
-                if let Expr::NestedSimpleBlock(ref block) = var.expr {
-                    match block.scope.get(&key) {
+                if let Expr::Block(ref block) = var.expr {
+                    match block.scope().and_then(|s| s.get(&key)) {
                         Some(val) => {
                             var = val;
                         },
@@ -144,15 +139,14 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
         },
 
-        /// For Blocks, we simplify the CSSEntry Expressions in the context of
-        /// the block scope, and complain if they do not themselves resolve to blocks.
-        /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
+        /// For Blocks, we do our best to simplify the block contents, complaining
+        /// if there is something invalid somewhere.
         Expr::Block(block_enum) => {
 
             /// simplify the block as best as we can, throwing up any errors in doing so.
             let simplified_block = match block_enum {
                 Block::KeyframesBlock(block) => {
-                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
                     Block::KeyframesBlock(KeyframesBlock{
@@ -162,7 +156,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                     })
                 },
                 Block::MediaBlock(block) => {
-                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
                     Block::MediaBlock(MediaBlock{
@@ -172,7 +166,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                     })
                 },
                 Block::FontFaceBlock(block) => {
-                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
                     Block::FontFaceBlock(FontFaceBlock{
@@ -181,7 +175,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                     })
                 },
                 Block::CSSBlock(block) => {
-                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
                     Block::CSSBlock(CSSBlock{
@@ -269,7 +263,7 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
 }
 
-fn simplify_block_scope(block_scope: HashMap<String,Expression>, scope: &Scope, context: &Context) -> HashMap<String,Expression> {
+fn simplify_block_scope(block_scope: HashMap<String,Expression>, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
     let new_scope = scope.push(block_scope.clone());
     let mut simplified_block_scope = HashMap::new();
     for (name,expr) in block_scope {
@@ -277,7 +271,7 @@ fn simplify_block_scope(block_scope: HashMap<String,Expression>, scope: &Scope, 
         let simplified_expr = eval(expr,s,context)?;
         simplified_block_scope.insert(name, simplified_expr);
     }
-    simplified_block_scope
+    Ok(simplified_block_scope)
 }
 fn try_cssbits_to_string(bits: Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<String,Error> {
     let mut string = vec![];
@@ -295,11 +289,11 @@ fn try_cssbits_to_string(bits: Vec<CSSBit>, scope: &Scope, context: &Context) ->
             }
         }
     }
-    string.concat()
+    Ok(string.concat())
 }
 fn try_eval_cssbits(bits: Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<Vec<CSSBit>,Error> {
-    let s = try_cssbits_to_string(bits)?;
-    vec![ CSSBit::Str(s) ]
+    let s = try_cssbits_to_string(bits,scope,context)?;
+    Ok(vec![ CSSBit::Str(s) ])
 }
 fn try_eval_cssentries(entries: Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<CSSEntry>,Error> {
     let mut out = vec![];
@@ -322,7 +316,7 @@ fn try_eval_cssentries(entries: Vec<CSSEntry>, scope: &Scope, context: &Context)
             }
         }
     }
-    Ok(out);
+    Ok(out)
 }
 
 

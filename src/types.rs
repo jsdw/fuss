@@ -74,6 +74,17 @@ pub struct FontFaceBlock {
     pub css: Vec<CSSEntry>
 }
 
+impl Block {
+    pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
+        match *self {
+            Block::KeyframesBlock(ref b) => Some(&b.scope),
+            Block::MediaBlock(ref b) => Some(&b.scope),
+            Block::FontFaceBlock(ref b) => Some(&b.scope),
+            Block::CSSBlock(ref b) => Some(&b.scope)
+        }
+    }
+}
+
 // /// A simplified version of the above
 // pub enum SimplifiedBlock {
 //     SimpleKeyframesBlock(SimpleKeyframesBlock),

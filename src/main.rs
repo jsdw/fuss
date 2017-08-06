@@ -51,7 +51,7 @@ fn run() -> io::Result<()> {
                 eprintln!("Error: {:?}", e);
                 Ok(())
             },
-            Ok(Expr::NestedSimpleBlock(block)) => {
+            Ok(Expr::Block(block)) => {
                 let css = outputter::to_css(&block);
                 let stdout = io::stdout();
                 let mut handle = stdout.lock();
