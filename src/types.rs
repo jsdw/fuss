@@ -85,31 +85,6 @@ impl Block {
     }
 }
 
-// /// A simplified version of the above
-// pub enum SimplifiedBlock {
-//     SimpleKeyframesBlock(SimpleKeyframesBlock),
-//     MediaBlock(MediaBlock),
-//     FontFaceBlock(FontFaceBlock),
-//     CSSBlock(CSSBlock),
-//     ScopeBlock(ScopeBlock)
-// }
-
-// /// a simplified version of the above. Nothing is parsed into this type,
-// /// but it is used as a simplification of Block to prevent some simplification
-// /// errors.
-// #[derive(PartialEq,Debug,Clone)]
-// pub struct NestedSimpleBlock {
-//     pub scope: HashMap<String,Expression>,
-//     pub selector: String,
-//     pub css: Vec<NestedCSSEntry>
-// }
-
-// #[derive(PartialEq,Debug,Clone)]
-// pub enum NestedCSSEntry {
-//     KeyVal{ key: String, val: String},
-//     Block(Box<NestedSimpleBlock>)
-// }
-
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
@@ -235,7 +210,7 @@ pub struct Error {
 
 #[derive(PartialEq,Debug)]
 pub enum ErrorType {
-    NotAnExpression,
+    NotAValidInnerBlock,
     CantFindVariable(String),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
@@ -247,5 +222,6 @@ pub enum ErrorType {
     UnitMismatch,
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
-    ImportError(Box<Error>)
+    ImportError(Box<Error>),
+    BlockNotAllowedInFontFace
 }

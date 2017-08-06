@@ -52,7 +52,12 @@ fn run() -> io::Result<()> {
                 Ok(())
             },
             Ok(Expr::Block(block)) => {
-                let css = outputter::to_css(&block);
+
+                let css = match outputter::to_css(block) {
+                    Ok(s) => s,
+                    Err(e) => { eprintln!("Error: {:?}", e); return Ok(()); }
+                };
+
                 let stdout = io::stdout();
                 let mut handle = stdout.lock();
 

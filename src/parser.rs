@@ -8,7 +8,7 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
     let mut parser = Rdp::new(StringInput::new(input));
 
     if !parser.file() {
-        return Err(ErrorType::NotAnExpression)
+        return Err(ErrorType::NotAValidInnerBlock)
     }
     Ok(parser.file_expression())
 
