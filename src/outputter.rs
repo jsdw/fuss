@@ -2,7 +2,7 @@ use types::*;
 
 /// Take a `NestedSimpleBlock` and convert it into
 /// a valid CSS string.
-pub fn to_css(block: &NestedSimpleBlock) -> String {
+pub fn to_css(block: &Block) -> String {
     let v = flatten("", block);
     print_flattened(&v)
 }
@@ -42,51 +42,62 @@ fn print_flattened(blocks: &Vec<FlattenedBlock>) -> String {
 
 }
 
-/// Recurse over NestedSimpleBlocks and push plain css to our buffer.
-fn flatten<'a>(selector: &str, block: &'a NestedSimpleBlock) -> Vec<FlattenedBlock<'a>> {
-
-    if block.css.len() == 0 {
-        return vec![];
-    }
+/// Recurse over Blocks and push plain css to our buffer.
+fn flatten<'a>(selector: &str, block_enum: &'a Block) -> Vec<FlattenedBlock<'a>> {
 
     let mut output = vec![];
-    let this_selector = merge_selectors(selector, &block.selector);
-    let mut this_block = FlattenedBlock{
-        selector: this_selector.clone(),
-        inner: vec![]
-    };
+    match *block_enum {
 
-    for entry in &block.css {
-        match *entry {
-            NestedCSSEntry::KeyVal{ ref key, ref val } => {
-                this_block.inner.push((key,val));
-            },
-            NestedCSSEntry::Block(ref boxed_block) => {
+        Block::CSSBlock(ref block) => {
 
-                // we've seen another block, so commit our
-                // current one to the list if it's not empty:
-                if this_block.inner.len() > 0 {
-                    output.push(this_block);
-                    this_block = FlattenedBlock{
-                        selector: this_selector.clone(),
-                        inner: vec![]
+            if block.css.len() == 0 {
+                return vec![];
+            }
+
+            let this_selector = merge_selectors(selector, &block.selector);
+            let mut this_block = FlattenedBlock{
+                selector: this_selector.clone(),
+                inner: vec![]
+            };
+
+            for entry in &block.css {
+                match *entry {
+                    NestedCSSEntry::KeyVal{ ref key, ref val } => {
+                        this_block.inner.push((key,val));
+                    },
+                    NestedCSSEntry::Block(ref boxed_block) => {
+
+                        // we've seen another block, so commit our
+                        // current one to the list if it's not empty:
+                        if this_block.inner.len() > 0 {
+                            output.push(this_block);
+                            this_block = FlattenedBlock{
+                                selector: this_selector.clone(),
+                                inner: vec![]
+                            }
+                        }
+
+                        // append all blocks returned to our list:
+                        let mut next_blocks = flatten(&this_block.selector, &boxed_block );
+                        output.append(&mut next_blocks);
+
                     }
                 }
-
-                // append all blocks returned to our list:
-                let mut next_blocks = flatten(&this_block.selector, &boxed_block );
-                output.append(&mut next_blocks);
-
             }
+
+            // commit out current block to the list if it's not empty:
+            if this_block.inner.len() > 0 {
+                output.push(this_block);
+            }
+
+        },
+
+        _ => {
+            panic!("AAH!");
         }
-    }
 
-    // commit out current block to the list if it's not empty:
-    if this_block.inner.len() > 0 {
-        output.push(this_block);
-    }
-
-    output
+    };
+    ouYput
 
 }
 

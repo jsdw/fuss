@@ -149,92 +149,118 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         /// We make use of a NestedSimpleBlock type to ensure that we have valid output.
         Expr::Block(block_enum) => {
 
-            match block_enum {
+            /// simplify the block as best as we can, throwing up any errors in doing so.
+            let simplified_block = match block_enum {
                 Block::KeyframesBlock(block) => {
+                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let new_scope = scope.push(block_scope.clone());
+
+                    Block::KeyframesBlock(KeyframesBlock{
+                        scope: block_scope,
+                        name: try_eval_cssbits(block.name, &new_scope, context)?,
+                        inner: try_eval_cssentries(block.inner, &new_scope, context)?
+                    })
                 },
                 Block::MediaBlock(block) => {
+                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let new_scope = scope.push(block_scope.clone());
 
+                    Block::MediaBlock(MediaBlock{
+                        scope: block_scope,
+                        query: try_eval_cssbits(block.query, &new_scope, context)?,
+                        css: try_eval_cssentries(block.css, &new_scope, context)?
+                    })
                 },
                 Block::FontFaceBlock(block) => {
+                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let new_scope = scope.push(block_scope.clone());
 
+                    Block::FontFaceBlock(FontFaceBlock{
+                        scope: block_scope,
+                        css: try_eval_cssentries(block.css, &new_scope, context)?
+                    })
                 },
                 Block::CSSBlock(block) => {
+                    let block_scope = simplify_block_scope(block.scope, &scope, context);
+                    let new_scope = scope.push(block_scope.clone());
 
-// make func to eval scope. check that it actually works. consider allowing recursion (record count?)
-// make func to eval cssbits into strings
-// reuse these in the above.
-// consider no logner using nestedSimpleBlock
-                },
-            }
-
-
-            // simplify things in the block scope against a scope including the unsimplified
-            // versions of themselves. This allows variables to reference other variables defined here.
-            //
-            // For each variable we try and simplify, we push onto the
-            // scope a RecursiveValue marker for that variable, so that if at any point while
-            // simplifying the expression bound to the variable, we encounter that same variable,
-            // an error is thrown. This prevents self referential expressions.
-            //
-            let block_scope = scope.push(block.scope.clone());
-            let mut simplified_block_scope = HashMap::new();
-            for (name,expr) in block.scope {
-                let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
-                let simplified_expr = eval(expr,s,context)?;
-                simplified_block_scope.insert(name, simplified_expr);
-            }
-            let new_scope = scope.push(simplified_block_scope.clone());
-
-            /// This function takes a vector of CSSBits and returns a String.
-            /// We use this to decode the strings+expressions in css keys, values
-            /// and selector.
-            let build_from = |bits: Vec<CSSBit>| -> Result<String,Error> {
-                let mut string = vec![];
-                for bit in bits {
-                    match bit {
-                        CSSBit::Str(s) => string.push(s),
-                        CSSBit::Expr(e) => {
-                            let e = eval(e, new_scope.clone(),context)?;
-                            use prelude::casting::raw_string;
-                            let s = match raw_string(e.expr) {
-                                Ok(s) => Ok(s),
-                                Err(err) => err!{e,err}
-                            }?;
-                            string.push(s);
-                        }
-                    }
+                    Block::CSSBlock(CSSBlock{
+                        scope: block_scope,
+                        selector: try_eval_cssbits(block.selector, &new_scope, context)?,
+                        css: try_eval_cssentries(block.css, &new_scope, context)?
+                    })
                 }
-                Ok(string.concat())
             };
 
-            /// build up our simplified block now given the above.
-            let selector_string = build_from(block.selector)?;
-            let mut blocks = vec![];
-            for val in block.css {
-                match val {
-                    CSSEntry::Expr(expr) => {
-                        let css_expr = eval(expr, new_scope.clone(),context)?;
-                        let block = match css_expr.expr {
-                            Expr::NestedSimpleBlock(block) => block,
-                            _ => return err!(css_expr, NotACSSBlock)
-                        };
-                        blocks.push( NestedCSSEntry::Block(Box::new(block)) );
-                    },
-                    CSSEntry::KeyVal{ key, val } => {
-                        let key_strings = build_from(key)?;
-                        let val_strings = build_from(val)?;
-                        blocks.push( NestedCSSEntry::KeyVal{ key:key_strings, val:val_strings } );
-                    }
-                }
-            }
+            Ok(expression_from!{e, Expr::Block(simplified_block)})
 
-            Ok(expression_from!{e,
-                Expr::NestedSimpleBlock(NestedSimpleBlock{
-                    scope: simplified_block_scope,
-                    selector: selector_string,
-                    css: blocks
-                })
-            })
+            // // simplify things in the block scope against a scope including the unsimplified
+            // // versions of themselves. This allows variables to reference other variables defined here.
+            // //
+            // // For each variable we try and simplify, we push onto the
+            // // scope a RecursiveValue marker for that variable, so that if at any point while
+            // // simplifying the expression bound to the variable, we encounter that same variable,
+            // // an error is thrown. This prevents self referential expressions.
+            // //
+            // let block_scope = scope.push(block.scope.clone());
+            // let mut simplified_block_scope = HashMap::new();
+            // for (name,expr) in block.scope {
+            //     let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
+            //     let simplified_expr = eval(expr,s,context)?;
+            //     simplified_block_scope.insert(name, simplified_expr);
+            // }
+            // let new_scope = scope.push(simplified_block_scope.clone());
+
+            // /// This function takes a vector of CSSBits and returns a String.
+            // /// We use this to decode the strings+expressions in css keys, values
+            // /// and selector.
+            // let build_from = |bits: Vec<CSSBit>| -> Result<String,Error> {
+            //     let mut string = vec![];
+            //     for bit in bits {
+            //         match bit {
+            //             CSSBit::Str(s) => string.push(s),
+            //             CSSBit::Expr(e) => {
+            //                 let e = eval(e, new_scope.clone(),context)?;
+            //                 use prelude::casting::raw_string;
+            //                 let s = match raw_string(e.expr) {
+            //                     Ok(s) => Ok(s),
+            //                     Err(err) => err!{e,err}
+            //                 }?;
+            //                 string.push(s);
+            //             }
+            //         }
+            //     }
+            //     Ok(string.concat())
+            // };
+
+            // /// build up our simplified block now given the above.
+            // let selector_string = build_from(block.selector)?;
+            // let mut blocks = vec![];
+            // for val in block.css {
+            //     match val {
+            //         CSSEntry::Expr(expr) => {
+            //             let css_expr = eval(expr, new_scope.clone(),context)?;
+            //             let block = match css_expr.expr {
+            //                 Expr::NestedSimpleBlock(block) => block,
+            //                 _ => return err!(css_expr, NotACSSBlock)
+            //             };
+            //             blocks.push( NestedCSSEntry::Block(Box::new(block)) );
+            //         },
+            //         CSSEntry::KeyVal{ key, val } => {
+            //             let key_strings = build_from(key)?;
+            //             let val_strings = build_from(val)?;
+            //             blocks.push( NestedCSSEntry::KeyVal{ key:key_strings, val:val_strings } );
+            //         }
+            //     }
+            // }
+
+            // Ok(expression_from!{e,
+            //     Expr::NestedSimpleBlock(NestedSimpleBlock{
+            //         scope: simplified_block_scope,
+            //         selector: selector_string,
+            //         css: blocks
+            //     })
+            // })
 
         },
 
@@ -243,16 +269,62 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
 }
 
-fn eval_block_scope(block_scope: Scope, scope: Scope, context: &Context){
-    let block_scope = scope.push(block.scope.clone());
+fn simplify_block_scope(block_scope: HashMap<String,Expression>, scope: &Scope, context: &Context) -> HashMap<String,Expression> {
+    let new_scope = scope.push(block_scope.clone());
     let mut simplified_block_scope = HashMap::new();
-    for (name,expr) in block.scope {
-        let s = block_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(RecursiveValue) });
+    for (name,expr) in block_scope {
+        let s = new_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(Primitive::RecursiveValue) });
         let simplified_expr = eval(expr,s,context)?;
         simplified_block_scope.insert(name, simplified_expr);
     }
-    let new_scope = scope.push(simplified_block_scope.clone());
+    simplified_block_scope
 }
+fn try_cssbits_to_string(bits: Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<String,Error> {
+    let mut string = vec![];
+    for bit in bits {
+        match bit {
+            CSSBit::Str(s) => string.push(s),
+            CSSBit::Expr(e) => {
+                let e = eval(e, scope.clone(),context)?;
+                use prelude::casting::raw_string;
+                let s = match raw_string(e.expr) {
+                    Ok(s) => Ok(s),
+                    Err(err) => err!{e,err}
+                }?;
+                string.push(s);
+            }
+        }
+    }
+    string.concat()
+}
+fn try_eval_cssbits(bits: Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<Vec<CSSBit>,Error> {
+    let s = try_cssbits_to_string(bits)?;
+    vec![ CSSBit::Str(s) ]
+}
+fn try_eval_cssentries(entries: Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<CSSEntry>,Error> {
+    let mut out = vec![];
+    for val in entries {
+        match val {
+            CSSEntry::Expr(expr) => {
+                let css_expr = eval(expr, scope.clone(),context)?;
+                match css_expr.expr {
+                    Expr::Block(_) => out.push(CSSEntry::Expr(css_expr)),
+                    _ => return err!(css_expr, NotACSSBlock)
+                };
+            },
+            CSSEntry::KeyVal{key, val} => {
+                let key_bit = try_eval_cssbits(key, scope, context)?;
+                let val_bit = try_eval_cssbits(val, scope, context)?;
+                out.push(CSSEntry::KeyVal{
+                    key: key_bit,
+                    val: val_bit
+                });
+            }
+        }
+    }
+    Ok(out);
+}
+
 
 #[cfg(test)]
 pub mod tests {

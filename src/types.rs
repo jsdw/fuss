@@ -74,22 +74,30 @@ pub struct FontFaceBlock {
     pub css: Vec<CSSEntry>
 }
 
+// /// A simplified version of the above
+// pub enum SimplifiedBlock {
+//     SimpleKeyframesBlock(SimpleKeyframesBlock),
+//     MediaBlock(MediaBlock),
+//     FontFaceBlock(FontFaceBlock),
+//     CSSBlock(CSSBlock),
+//     ScopeBlock(ScopeBlock)
+// }
 
-/// a simplified version of the above. Nothing is parsed into this type,
-/// but it is used as a simplification of Block to prevent some simplification
-/// errors.
-#[derive(PartialEq,Debug,Clone)]
-pub struct NestedSimpleBlock {
-    pub scope: HashMap<String,Expression>,
-    pub selector: String,
-    pub css: Vec<NestedCSSEntry>
-}
+// /// a simplified version of the above. Nothing is parsed into this type,
+// /// but it is used as a simplification of Block to prevent some simplification
+// /// errors.
+// #[derive(PartialEq,Debug,Clone)]
+// pub struct NestedSimpleBlock {
+//     pub scope: HashMap<String,Expression>,
+//     pub selector: String,
+//     pub css: Vec<NestedCSSEntry>
+// }
 
-#[derive(PartialEq,Debug,Clone)]
-pub enum NestedCSSEntry {
-    KeyVal{ key: String, val: String},
-    Block(Box<NestedSimpleBlock>)
-}
+// #[derive(PartialEq,Debug,Clone)]
+// pub enum NestedCSSEntry {
+//     KeyVal{ key: String, val: String},
+//     Block(Box<NestedSimpleBlock>)
+// }
 
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
@@ -107,10 +115,7 @@ pub enum Expr {
     /// Applying args to something (calling a function)
     App{ expr: Box<Expression>, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
-    Block(Block),
-    /// A simplified version of CSS: we don't have to parse direct to this,
-    /// instead we can simplify Block into it later on.
-    NestedSimpleBlock(NestedSimpleBlock)
+    Block(Block)
 }
 
 /// An Expr paired with the start and end position
