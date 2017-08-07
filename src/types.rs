@@ -21,6 +21,12 @@ pub enum CSSEntry {
     KeyVal{ key: Vec<CSSBit>, val: Vec<CSSBit> }
 }
 
+#[derive(PartialEq,Debug,Clone)]
+pub enum EvaluatedCSSEntry {
+    Block(EvaluatedBlock),
+    KeyVal{ key: String, val: String}
+}
+
 /// we parse CSS values into pieces, which are either raw strings
 /// or expressions that we'd like interpolated into the output. We
 /// allow a limited set of expressions in css values:
@@ -36,45 +42,61 @@ pub enum CSSBit {
 
 /// The different kind of CSS blocks that we know about
 #[derive(PartialEq,Debug,Clone)]
-pub enum Block {
-    KeyframesBlock(KeyframesBlock),
-    MediaBlock(MediaBlock),
-    FontFaceBlock(FontFaceBlock),
-    CSSBlock(CSSBlock)
+pub enum Block<Selector,Inner> {
+    KeyframesBlock(KeyframesBlock<Selector,Inner>),
+    MediaBlock(MediaBlock<Selector,Inner>),
+    FontFaceBlock(FontFaceBlock<Inner>),
+    CSSBlock(CSSBlock<Selector,Inner>)
+}
+pub type UnevaluatedBlock = Block<Vec<CSSBit>, CSSEntry>;
+
+#[derive(PartialEq,Debug,Clone)]
+pub struct EvaluatedBlock {
+    pub start: Position,
+    pub end: Position,
+    pub block: Block<String, EvaluatedCSSEntry>
 }
 
 /// A CSS block, along with any scope that encloses it (variable definitions).
 #[derive(PartialEq,Debug,Clone)]
-pub struct CSSBlock {
+pub struct CSSBlock<Selector,CSS> {
     pub scope: HashMap<String,Expression>,
-    pub selector: Vec<CSSBit>,
-    pub css: Vec<CSSEntry>
+    pub selector: Selector,
+    pub css: Vec<CSS>
 }
+pub type UnevaluatedCSSBlock = CSSBlock<Vec<CSSBit>, CSSEntry>;
+pub type EvaluatedCSSBlock = CSSBlock<String, EvaluatedCSSEntry>;
 
 /// A keyframes animation block
 #[derive(PartialEq,Debug,Clone)]
-pub struct KeyframesBlock {
+pub struct KeyframesBlock<Name, Inner> {
     pub scope: HashMap<String,Expression>,
-    pub name: Vec<CSSBit>,
-    pub inner: Vec<CSSEntry>
+    pub name: Name,
+    pub inner: Vec<Inner>
 }
+pub type UnevaluatedKeyframesBlock = KeyframesBlock<Vec<CSSBit>, CSSEntry>;
+pub type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
 
 /// A media query block.
 #[derive(PartialEq,Debug,Clone)]
-pub struct MediaBlock {
+pub struct MediaBlock<Query,CSS> {
     pub scope: HashMap<String,Expression>,
-    pub query: Vec<CSSBit>,
-    pub css: Vec<CSSEntry>
+    pub query: Query,
+    pub css: Vec<CSS>
 }
+pub type UnevaluatedMediaBlock = MediaBlock<Vec<CSSBit>, CSSEntry>;
+pub type EvaluatedMediaBlock = MediaBlock<String, EvaluatedCSSEntry>;
 
 /// A font face block.
 #[derive(PartialEq,Debug,Clone)]
-pub struct FontFaceBlock {
+pub struct FontFaceBlock<CSS> {
     pub scope: HashMap<String,Expression>,
-    pub css: Vec<CSSEntry>
+    pub css: Vec<CSS>
 }
+pub type UnevaluatedFontFaceBlock = FontFaceBlock<CSSEntry>;
+pub type EvaluatedFontFaceBlock = FontFaceBlock<EvaluatedCSSEntry>;
 
-impl Block {
+impl<T,U> Block<T,U> {
     pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
         match *self {
             Block::KeyframesBlock(ref b) => Some(&b.scope),
@@ -101,7 +123,9 @@ pub enum Expr {
     /// Applying args to something (calling a function)
     App{ expr: Box<Expression>, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
-    Block(Block)
+    Block(UnevaluatedBlock),
+    /// An evaluated form of the above; this avoids needing to do some checks later:
+    EvaluatedBlock(EvaluatedBlock)
 }
 
 /// An Expr paired with the start and end position
@@ -223,5 +247,7 @@ pub enum ErrorType {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportError(Box<Error>),
-    BlockNotAllowedInFontFace
+    BlockNotAllowedInFontFace,
+    BlockNotAllowedInKeyframes,
+    ExpectedStringFromCSSBits(Vec<CSSBit>)
 }

@@ -3,19 +3,12 @@ use std::vec;
 use std::mem;
 
 
-pub fn to_css(block: Block) -> Result<String,Error> {
-
-    let block_e = Expression{
-        start: Position::new(0),
-        end: Position::new(0),
-        expr: Expr::Block(block)
-    };
-
-    let units = to_output_units(block_e, Location::new())?;
+pub fn to_css(block: EvaluatedBlock) -> Result<String,Error> {
+    let units = to_output_units(block, Location::new())?;
     Ok(unit_iter_to_string(UnitIterator::new(units)))
-
 }
 
+#[derive(Clone,Debug,PartialEq)]
 struct Location {
     // animation name, followed by position (eg 100%/from/to):
     keyframes: Option< (String, Option<String>) >,
@@ -38,6 +31,7 @@ impl Location {
     }
 }
 
+#[derive(Clone,Debug,PartialEq)]
 struct Unit {
     location: Location,
     keyvals: Vec<(String,String)>
@@ -53,9 +47,9 @@ fn unit_iter_to_string<I: Iterator<Item=Unit>>(iter: I) -> String {
 
         for inner in &unit.keyvals {
             out += "\t";
-            out += inner.0;
+            out += &inner.0;
             out += ": ";
-            out += inner.1;
+            out += &inner.1;
             out += "\n";
         }
 
@@ -78,55 +72,64 @@ fn make_selector_string(loc: Location) -> String {
 
 }
 
-fn to_output_units(expression: Expression, mut location: Location) -> Result<Vec<Unit>,Error> {
+fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<Unit>,Error> {
 
     // we are already in a font-face rule; not allowed any other blocks:
     if location.font {
-        return err!(expression, ErrorType::BlockNotAllowedInFontFace);
+        return err!(block, ErrorType::BlockNotAllowedInFontFace);
     }
 
-    match expression.expr {
-        Expr::Block(Block::KeyframesBlock(b)) => {
+    match block.block {
+        Block::KeyframesBlock(b) => {
             location.keyframes = Some( (b.name, None) );
-            handle_cssentries(location, b.css)
+            handle_cssentries(location, b.inner)
         },
-        Expr::Block(Block::MediaBlock(b)) => {
+        Block::MediaBlock(b) => {
+            if location.keyframes.is_some() {
+                return err!(block, ErrorType::BlockNotAllowedInKeyframes);
+            }
             location.media.push(b.query);
             handle_cssentries(location, b.css)
         },
-        Expr::Block(Block::FontFaceBlock(b)) => {
+        Block::FontFaceBlock(b) => {
+            if location.keyframes.is_some() {
+                return err!(block, ErrorType::BlockNotAllowedInKeyframes);
+            }
             location.font = true;
             handle_cssentries(location, b.css)
         },
-        Expr::Block(Block::CSSBlock(b)) => {
-            let selector = b.selector.trim();
+        Block::CSSBlock(b) => {
+            if location.keyframes.is_some() {
+                return err!(block, ErrorType::BlockNotAllowedInKeyframes);
+            }
+            let selector = b.selector.trim().to_owned();
             if selector.len() > 0 {
-                location.css.push(b.selector);
+                location.css.push(selector);
             }
             handle_cssentries(location, b.css)
         },
         _ => {
             // this should be accounted for already in eval stage:
-            err!(expression, ErrorType::NotACSSBlock);
+            err!(block, ErrorType::NotACSSBlock)
         }
     }
 
 }
 
-fn handle_cssentries(location: Location, entries: Vec<CSSEntry>) -> Result<Vec<Unit>,Error> {
+fn handle_cssentries(location: Location, entries: Vec<EvaluatedCSSEntry>) -> Result<Vec<Unit>,Error> {
 
-    let output = vec![];
-    let keyvals = vec![];
+    let mut output = vec![];
+    let mut keyvals = vec![];
 
     for entry in entries {
 
         match entry {
-            CSSEntry::KeyVal{key,val} => {
-                keyvals.push( (key,val) );
+            EvaluatedCSSEntry::KeyVal{key,val} => {
+                keyvals.push( (key, val) );
             },
-            CSSEntry::Expr(expression) => {
+            EvaluatedCSSEntry::Block(block) => {
 
-                if keyvals.len() {
+                if keyvals.len() > 0 {
                     output.push(Unit{
                         location: location.clone(),
                         keyvals: keyvals
@@ -134,7 +137,7 @@ fn handle_cssentries(location: Location, entries: Vec<CSSEntry>) -> Result<Vec<U
                     keyvals = vec![];
                 }
 
-                let mut next_blocks = to_output_units(expression, location.clone())?;
+                let mut next_blocks = to_output_units(block, location.clone())?;
                 output.append(&mut next_blocks);
 
             }
@@ -142,14 +145,14 @@ fn handle_cssentries(location: Location, entries: Vec<CSSEntry>) -> Result<Vec<U
 
     }
 
-    if keyvals.len() {
+    if keyvals.len() > 0 {
         output.push(Unit{
             location: location.clone(),
             keyvals: keyvals
         });
     }
 
-    output
+    Ok(output)
 
 }
 
@@ -183,7 +186,7 @@ impl Iterator for UnitIterator {
     fn next(&mut self) -> Option<Unit> {
 
         // get the next unit, returning if there isn't one:
-        let unit = match self.get_next() {
+        let mut unit = match self.get_next() {
             None => return None,
             Some(unit) => unit
         };
@@ -191,7 +194,7 @@ impl Iterator for UnitIterator {
         // try and append as many subsequent units as possible to it
         // as long as the location matches. put back the last one
         // we took out if it fails to match, so that we get it next time.
-        while let Some(next_unit) = self.get_next() {
+        while let Some(mut next_unit) = self.get_next() {
 
             if unit.location == next_unit.location {
                 unit.keyvals.append(&mut next_unit.keyvals);

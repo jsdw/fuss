@@ -282,7 +282,7 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
-        _css_block_inner_block(&self) -> Block {
+        _css_block_inner_block(&self) -> UnevaluatedBlock {
             (inner:_css_block_inner()) => {
                 Block::CSSBlock(CSSBlock{
                     scope:inner.scope,
@@ -305,7 +305,7 @@ impl_rdp! {
                 Expr::Block(Block::CSSBlock(res))
             }
         }
-        _keyframes_block(&self) -> KeyframesBlock {
+        _keyframes_block(&self) -> UnevaluatedKeyframesBlock {
             (name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
                 KeyframesBlock{
                     name: name.into_iter().collect::<Vec<CSSBit>>(),
@@ -314,7 +314,7 @@ impl_rdp! {
                 }
             }
         }
-        _font_face_block(&self) -> FontFaceBlock {
+        _font_face_block(&self) -> UnevaluatedFontFaceBlock {
             (_:block_open, inner:_css_block_inner(), _:block_close) => {
                 FontFaceBlock{
                     scope: inner.scope,
@@ -322,7 +322,7 @@ impl_rdp! {
                 }
             }
         }
-        _media_block(&self) -> MediaBlock {
+        _media_block(&self) -> UnevaluatedMediaBlock {
             (query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
                 MediaBlock{
                     query: query.into_iter().collect::<Vec<CSSBit>>(),
@@ -331,7 +331,7 @@ impl_rdp! {
                 }
             }
         }
-        _css_block(&self) -> CSSBlock {
+        _css_block(&self) -> UnevaluatedCSSBlock {
             (selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
                 CSSBlock{
                     selector: selector.into_iter().collect::<Vec<CSSBit>>(),

@@ -13,6 +13,9 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         /// and get some result out; we can't simplify them.
         Expr::PrimFunc(..) => Ok(e),
 
+        /// EvaluatedBlocks have already been evaluated, so no need to do more:
+        Expr::EvaluatedBlock(..) => Ok(e),
+
         /// Variables: replace these with the Expresssion on scope that the
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
@@ -143,50 +146,55 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         /// if there is something invalid somewhere.
         Expr::Block(block_enum) => {
 
+            /// wrap the output appropriately:
+            let start = e.start;
+            let end = e.end;
+            let out = |b| EvaluatedBlock{start:start,end:end,block:b};
+
             /// simplify the block as best as we can, throwing up any errors in doing so.
             let simplified_block = match block_enum {
                 Block::KeyframesBlock(block) => {
                     let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
-                    Block::KeyframesBlock(KeyframesBlock{
+                    out(Block::KeyframesBlock(KeyframesBlock{
                         scope: block_scope,
-                        name: try_eval_cssbits(block.name, &new_scope, context)?,
+                        name: try_cssbits_to_string(block.name, &new_scope, context)?,
                         inner: try_eval_cssentries(block.inner, &new_scope, context)?
-                    })
+                    }))
                 },
                 Block::MediaBlock(block) => {
                     let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
-                    Block::MediaBlock(MediaBlock{
+                    out(Block::MediaBlock(MediaBlock{
                         scope: block_scope,
-                        query: try_eval_cssbits(block.query, &new_scope, context)?,
+                        query: try_cssbits_to_string(block.query, &new_scope, context)?,
                         css: try_eval_cssentries(block.css, &new_scope, context)?
-                    })
+                    }))
                 },
                 Block::FontFaceBlock(block) => {
                     let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
-                    Block::FontFaceBlock(FontFaceBlock{
+                    out(Block::FontFaceBlock(FontFaceBlock{
                         scope: block_scope,
                         css: try_eval_cssentries(block.css, &new_scope, context)?
-                    })
+                    }))
                 },
                 Block::CSSBlock(block) => {
                     let block_scope = simplify_block_scope(block.scope, &scope, context)?;
                     let new_scope = scope.push(block_scope.clone());
 
-                    Block::CSSBlock(CSSBlock{
+                    out(Block::CSSBlock(CSSBlock{
                         scope: block_scope,
-                        selector: try_eval_cssbits(block.selector, &new_scope, context)?,
+                        selector: try_cssbits_to_string(block.selector, &new_scope, context)?,
                         css: try_eval_cssentries(block.css, &new_scope, context)?
-                    })
+                    }))
                 }
             };
 
-            Ok(expression_from!{e, Expr::Block(simplified_block)})
+            Ok(expression_from!{e, Expr::EvaluatedBlock(simplified_block)})
 
         },
 
@@ -223,27 +231,23 @@ fn try_cssbits_to_string(bits: Vec<CSSBit>, scope: &Scope, context: &Context) ->
     }
     Ok(string.concat())
 }
-fn try_eval_cssbits(bits: Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<Vec<CSSBit>,Error> {
-    let s = try_cssbits_to_string(bits,scope,context)?;
-    Ok(vec![ CSSBit::Str(s) ])
-}
-fn try_eval_cssentries(entries: Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<CSSEntry>,Error> {
+fn try_eval_cssentries(entries: Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<EvaluatedCSSEntry>,Error> {
     let mut out = vec![];
     for val in entries {
         match val {
             CSSEntry::Expr(expr) => {
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
-                    Expr::Block(_) => out.push(CSSEntry::Expr(css_expr)),
+                    Expr::EvaluatedBlock(block) => out.push(EvaluatedCSSEntry::Block(block)),
                     _ => return err!(css_expr, NotACSSBlock)
                 };
             },
             CSSEntry::KeyVal{key, val} => {
-                let key_bit = try_eval_cssbits(key, scope, context)?;
-                let val_bit = try_eval_cssbits(val, scope, context)?;
-                out.push(CSSEntry::KeyVal{
-                    key: key_bit,
-                    val: val_bit
+                let key = try_cssbits_to_string(key, scope, context)?;
+                let val = try_cssbits_to_string(val, scope, context)?;
+                out.push(EvaluatedCSSEntry::KeyVal{
+                    key: key,
+                    val: val
                 });
             }
         }

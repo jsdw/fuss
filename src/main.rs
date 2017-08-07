@@ -51,7 +51,7 @@ fn run() -> io::Result<()> {
                 eprintln!("Error: {:?}", e);
                 Ok(())
             },
-            Ok(Expr::Block(block)) => {
+            Ok(Expr::EvaluatedBlock(block)) => {
 
                 let css = match outputter::to_css(block) {
                     Ok(s) => s,
