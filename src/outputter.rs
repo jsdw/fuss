@@ -72,6 +72,7 @@ fn make_selector_string(loc: Location) -> String {
 
 }
 
+/// take an EvaluatedBlock and turn it into a vector of Units; our basic output blocks.
 fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<Unit>,Error> {
 
     // we are already in a font-face rule; not allowed any other blocks:
@@ -81,6 +82,9 @@ fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<
 
     match block.block {
         Block::KeyframesBlock(b) => {
+            if location.keyframes.is_some() {
+                return err!(block, ErrorType::BlockNotAllowedInKeyframes);
+            }
             location.keyframes = Some( (b.name, None) );
             handle_cssentries(location, b.inner)
         },
@@ -95,17 +99,34 @@ fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<
             if location.keyframes.is_some() {
                 return err!(block, ErrorType::BlockNotAllowedInKeyframes);
             }
+
             location.font = true;
             handle_cssentries(location, b.css)
         },
         Block::CSSBlock(b) => {
-            if location.keyframes.is_some() {
+
+            let is_keyframes_inner = if let Some((_,Some(_))) = location.keyframes { true } else { false };
+            let is_keyframes = if location.keyframes.is_some() { true } else { false };
+            let selector = b.selector.trim().to_owned();
+            let is_selector = selector.len() > 0;
+
+            // we can't nest any further into keyframes blocks, so
+            // if we seem to be trying to, bail out:
+            if is_selector && is_keyframes_inner {
                 return err!(block, ErrorType::BlockNotAllowedInKeyframes);
             }
-            let selector = b.selector.trim().to_owned();
-            if selector.len() > 0 {
-                location.css.push(selector);
+
+            // if we have a selector and are in an @keyframes block, append to keyframes location,
+            // else treat this is a normal css block and append to css entries. if no selector,
+            // this unit will match the last, which is fine.
+            if is_selector {
+                if is_keyframes {
+                    location.keyframes = location.keyframes.map(|mut o| { o.1 = Some(selector); o });
+                } else {
+                    location.css.push(selector);
+                }
             }
+
             handle_cssentries(location, b.css)
         },
         _ => {
@@ -116,6 +137,7 @@ fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<
 
 }
 
+/// turn a vector of evaluated CSSEntries into a vector of Units; our basic output blocks.
 fn handle_cssentries(location: Location, entries: Vec<EvaluatedCSSEntry>) -> Result<Vec<Unit>,Error> {
 
     let mut output = vec![];

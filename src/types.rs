@@ -249,5 +249,6 @@ pub enum ErrorType {
     ImportError(Box<Error>),
     BlockNotAllowedInFontFace,
     BlockNotAllowedInKeyframes,
+    BlockNotAllowedInMedia,
     ExpectedStringFromCSSBits(Vec<CSSBit>)
 }
