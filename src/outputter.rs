@@ -64,6 +64,19 @@ fn make_selector_string(loc: Location) -> String {
 
     // TODO need to handle non selectors here too
     let mut out = String::new();
+
+    // if we are in an @font-face rule, ignore everything else in location:
+    if loc.font {
+        return "@font-face".to_owned();
+    }
+
+    // if we have media queries present, output them first, concat with 'and'
+    if loc.media.len() > 0 {
+        out += "@media ";
+        out += &loc.media.join(" and ");
+    }
+
+    // append any CSS
     for s in &loc.css {
         out += s;
         out += " ";
@@ -128,10 +141,6 @@ fn to_output_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<
             }
 
             handle_cssentries(location, b.css)
-        },
-        _ => {
-            // this should be accounted for already in eval stage:
-            err!(block, ErrorType::NotACSSBlock)
         }
     }
 
