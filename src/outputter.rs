@@ -2,11 +2,137 @@ use types::*;
 use std::vec;
 use std::mem;
 
-
-pub fn to_css(block: EvaluatedBlock) -> Result<String,Error> {
-    let units = to_output_units(block, Location::new())?;
-    Ok(unit_iter_to_string(UnitIterator::new(units)))
+/// represent the current location, disallowing invalid states as best we can:
+#[derive(Clone,Debug,PartialEq)]
+enum Location {
+    CSS{ media: Vec<String>, css: Vec<String> },
+    FontFace,
+    KeyframesOuter{ name: String },
+    KeyframesInner{ name: String, inner: String }
 }
+impl Location {
+    fn new() -> Location {
+        Location::CSS{ media: vec![], css: vec![] }
+    }
+}
+
+/// a Unit is our basic building block; it represents some keyval pairs at some location.
+/// Units can be outputted as is, but better to aggregate them by first merging media
+/// queries together, and then merging css rules together.
+#[derive(Clone,Debug,PartialEq)]
+struct Unit {
+    location: Location,
+    keyvals: Vec<(String,String)>
+}
+
+/// We transform Unit into this to ensure that there are no issues, and provide the right
+/// nesting and aggregation of things:
+enum OutputUnit {
+    Media{rule: String, inner: Vec<CSSOutputUnit>},
+    KeyFrame{name: String, inner: Vec<CSSOutputUnit>},
+    CSS(Vec<CSSOutputUnit>),
+    FontFace{name: String, keyvals: Vec<(String,String)>}
+}
+struct CSSOutputUnit {
+    selector: String,
+    keyvals: Vec<(String,String)>
+}
+
+/// Take an EvaluatedBlock and turn it into a vector of Units; our basic building blocks.
+/// For each type of block we run into, see if that block type is valid in the current
+/// locaiton and either error to that effect or continue on.
+fn block_to_units(block: EvaluatedBlock, mut location: Location) -> Result<Vec<Unit>,Error> {
+
+    match block.block {
+        Block::KeyframesBlock(b) => {
+            match location {
+                CSS{..} => {
+                    handle_cssentries(Location::KeyframesOuter{ name: b.name }, b.inner)
+                },
+                KeyframesOuter{..} | KeyframesInner{..} => {
+                    err!(block, ErrorType::BlockNotAllowedInKeyframes)
+                },
+                FontFace => {
+                    err!(block, ErrorType::BlockNotAllowedInFontFace)
+                }
+            }
+        },
+        Block::MediaBlock(b) => {
+            match location {
+                CSS{mut media,css} => {
+                    media.push(b.query);
+                    handle_cssentries(Location::CSS{media,css}, b.css)
+                },
+                KeyframesOuter{..} | KeyframesInner{..} => {
+                    err!(block, ErrorType::BlockNotAllowedInKeyframes)
+                },
+                FontFace => {
+                    err!(block, ErrorType::BlockNotAllowedInFontFace)
+                }
+            }
+        },
+        Block::FontFaceBlock(b) => {
+            match location {
+                CSS{..} => {
+                    handle_cssentries(Location::FontFace, b.css)
+                },
+                KeyframesOuter{..} | KeyframesInner{..} => {
+                    err!(block, ErrorType::BlockNotAllowedInKeyframes)
+                },
+                FontFace => {
+                    err!(block, ErrorType::BlockNotAllowedInFontFace)
+                }
+            }
+        },
+        Block::CSSBlock(b) => {
+
+            let selector = b.selector.trim().to_owned();
+            let is_selector = selector.len() > 0;
+
+            // no selector, so keep location the same as whatever it is
+            // and push the next unit.
+            if !is_selector {
+                return handle_cssentries(location, b.css);
+            }
+
+            match location {
+                CSS{media,mut css} => {
+                    css.push(b.css);
+                    handle_cssentries(Location::CSS{media,css}, b.css)
+                },
+                KeyframesOuter{name} => {
+                    handle_cssentries(Location::KeyframesInner{name,inner:b.selector}, b.css)
+                },
+                KeyframesInner{..} => {
+                    err!(block, ErrorType::BlockNotAllowedInKeyframes)
+                },
+                FontFace => {
+                    err!(block, ErrorType::BlockNotAllowedInFontFace)
+                }
+            }
+        }
+    }
+
+}
+
+/// take units and merge them into output units, complaining if we hit
+/// any disallowed things (like empty keyframe blocks)
+fn units_to_outputunits(Vec<Unit>) -> Result<Vec<Unit>,Error> {
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #[derive(Clone,Debug,PartialEq)]
 struct Location {
@@ -31,10 +157,9 @@ impl Location {
     }
 }
 
-#[derive(Clone,Debug,PartialEq)]
-struct Unit {
-    location: Location,
-    keyvals: Vec<(String,String)>
+pub fn to_css(block: EvaluatedBlock) -> Result<String,Error> {
+    let units = to_output_units(block, Location::new())?;
+    Ok(unit_iter_to_string(UnitIterator::new(units)))
 }
 
 fn unit_iter_to_string<I: Iterator<Item=Unit>>(iter: I) -> String {
