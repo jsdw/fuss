@@ -23,17 +23,10 @@ use std::io::{self, Write};
 use std::thread;
 
 fn main() {
-    match run() {
-        Err(e) => {
-            eprintln!("Error: {:?}", e);
-        },
-        Ok(_) => {
-            // all done!
-        }
-    }
+    run();
 }
 
-fn run() -> io::Result<()> {
+fn run() {
 
     let child = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
 
@@ -49,25 +42,12 @@ fn run() -> io::Result<()> {
         match res {
             Err(e) => {
                 eprintln!("Error: {:?}", e);
-                Ok(())
             },
             Ok(Expr::EvaluatedBlock(block)) => {
-
-                let css = match outputter::to_css(block) {
-                    Ok(s) => s,
-                    Err(e) => { eprintln!("Error: {:?}", e); return Ok(()); }
-                };
-
-                let stdout = io::stdout();
-                let mut handle = stdout.lock();
-
-                // these could error:
-                handle.write_all(css.as_bytes())?;
-                handle.flush()
+                outputter::print_css(block);
             },
             Ok(_) => {
                 eprintln!("Fuss file needs to evaluate to a css block");
-                Ok(())
             }
         }
 
