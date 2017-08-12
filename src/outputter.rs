@@ -1,9 +1,12 @@
 use types::*;
-use std::vec;
-use std::mem;
+use std::iter::Peekable;
+use std::io::{self, Write};
 
 /// the only thing we expose from this:
 pub fn print_css(block: EvaluatedBlock) {
+
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
 
     let unit_iter = UnitIterator::from_evaluated_block(block).filter_map(|item|{
         match item {
@@ -13,10 +16,71 @@ pub fn print_css(block: EvaluatedBlock) {
     });
 
     for output_unit in OutputUnitIterator::from_unit_iterator(unit_iter) {
-
+        if let Err(e) = handle.write_all(output_unit_to_string(output_unit).as_bytes()) {
+            eprintln!("Error writing to output: {}", e);
+        }
     }
 
 }
+
+fn output_unit_to_string(unit: OutputUnit) -> String {
+    let mut s = String::new();
+    match unit {
+        OutputUnit::Media{rule, inner} => {
+            s += "@media ";
+            s += &rule;
+            s += " {\n";
+            css_output_units_into_string(1, inner, &mut s);
+            s += "}\n";
+        },
+        OutputUnit::KeyFrame{name, inner} => {
+            s += "@keyframes ";
+            s += &name;
+            s += " {\n";
+            css_output_units_into_string(1, inner, &mut s);
+            s += "}\n";
+        },
+        OutputUnit::CSS(css) => {
+            css_output_units_into_string(0, css, &mut s);
+        },
+        OutputUnit::FontFace{name, keyvals} => {
+            s += "@font-face {\n";
+            css_keyvals_into_string(1, keyvals, &mut s);
+            s += "}\n";
+        }
+    }
+    s
+}
+
+fn css_output_units_into_string(indent_count: usize, css: Vec<CSSOutputUnit>, s: &mut String) {
+    for unit in css {
+        css_output_unit_into_string(indent_count, unit, s);
+    }
+}
+
+fn css_output_unit_into_string(indent_count: usize, css: CSSOutputUnit, s: &mut String) {
+    let indent: String = (0..indent_count).map(|_| '\t').collect();
+
+    *s += &indent;
+    *s += &css.selector;
+    *s += " {\n";
+    css_keyvals_into_string(indent_count+1, css.keyvals, s);
+    *s += &indent;
+    *s += "}\n"
+}
+
+fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &mut String) {
+    let indent: String = (0..indent_count).map(|_| '\t').collect();
+
+    for (key,val) in css {
+        *s += &indent;
+        *s += &key;
+        *s += ": ";
+        *s += &val;
+        *s += ";\n";
+    }
+}
+
 
 /// represent the current location, disallowing invalid states as best we can:
 #[derive(Clone,Debug,PartialEq)]
@@ -55,12 +119,12 @@ struct CSSOutputUnit {
 }
 
 /// Iterate over an Iterator<Item=Unit> and output Result<OutputUnit,Error>'s until we run out.
-struct OutputUnitIterator<Iter> {
-    iter: Iter
+struct OutputUnitIterator<Iter: Iterator<Item=Unit>> {
+    iter: Peekable<Iter>
 }
 impl <T> OutputUnitIterator<T> where T: Iterator<Item=Unit> {
     fn from_unit_iterator(iter: T) -> OutputUnitIterator<T> {
-        OutputUnitIterator{iter:iter}
+        OutputUnitIterator{iter:iter.peekable()}
     }
 }
 impl <T> Iterator for OutputUnitIterator<T> where T: Iterator<Item=Unit> {

@@ -19,7 +19,6 @@ use prelude::import::import_root;
 use std::convert::From;
 use std::path::PathBuf;
 use types::*;
-use std::io::{self, Write};
 use std::thread;
 
 fn main() {
