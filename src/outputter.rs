@@ -10,7 +10,7 @@ pub fn print_css(block: EvaluatedBlock) {
 
     let unit_iter = UnitIterator::from_evaluated_block(block).filter_map(|item|{
         match item {
-            Err(_) => None,
+            Err(e) => { eprintln!("Warning: {:?}", e); None },
             Ok(unit) => Some(unit)
         }
     });
@@ -26,12 +26,16 @@ pub fn print_css(block: EvaluatedBlock) {
 fn output_unit_to_string(unit: OutputUnit) -> String {
     let mut s = String::new();
     match unit {
-        OutputUnit::Media{rule, inner} => {
-            s += "@media ";
-            s += &rule;
-            s += " {\n";
-            css_output_units_into_string(1, inner, &mut s);
-            s += "}\n";
+        OutputUnit::CSS{media, inner} => {
+            if !media.is_empty() {
+                s += "@media ";
+                s += &media;
+                s += " {\n";
+                css_output_units_into_string(1, inner, &mut s);
+                s += "}\n";
+            } else {
+                css_output_units_into_string(0, inner, &mut s);
+            }
         },
         OutputUnit::KeyFrame{name, inner} => {
             s += "@keyframes ";
@@ -39,11 +43,8 @@ fn output_unit_to_string(unit: OutputUnit) -> String {
             s += " {\n";
             css_output_units_into_string(1, inner, &mut s);
             s += "}\n";
-        },
-        OutputUnit::CSS(css) => {
-            css_output_units_into_string(0, css, &mut s);
-        },
-        OutputUnit::FontFace{name, keyvals} => {
+        }
+        OutputUnit::FontFace(keyvals) => {
             s += "@font-face {\n";
             css_keyvals_into_string(1, keyvals, &mut s);
             s += "}\n";
@@ -108,10 +109,9 @@ struct Unit {
 /// We transform Unit into this to ensure that there are no issues, and provide the right
 /// nesting and aggregation of things:
 enum OutputUnit {
-    Media{rule: String, inner: Vec<CSSOutputUnit>},
+    CSS{media: String, inner: Vec<CSSOutputUnit>},
     KeyFrame{name: String, inner: Vec<CSSOutputUnit>},
-    CSS(Vec<CSSOutputUnit>),
-    FontFace{name: String, keyvals: Vec<(String,String)>}
+    FontFace(Vec<(String,String)>)
 }
 struct CSSOutputUnit {
     selector: String,
@@ -131,9 +131,118 @@ impl <T> Iterator for OutputUnitIterator<T> where T: Iterator<Item=Unit> {
     type Item = OutputUnit;
     fn next(&mut self) -> Option<Self::Item> {
 
-        None
+        let mut unit = match self.iter.next() {
+            None => return None,
+            Some(unit) => unit
+        };
+
+        match unit.location {
+            Location::CSS{media,css} => {
+
+                let mut output_units = vec![CSSOutputUnit{
+                    selector: css.join(" "),
+                    keyvals: unit.keyvals
+                }];
+
+                loop {
+
+                    // loop as long as we find another CSS unit with matching media query:
+                    if let Some(&Unit{location: Location::CSS{ media: ref media2,..},..}) = self.iter.peek() {
+                        if *media2 != media { break; }
+                    } else {
+                        break;
+                    }
+
+                    let mut other_unit = self.iter.next().unwrap();
+                    let selector = match other_unit.location {
+                        Location::CSS{css,..} => css,
+                        _ => unreachable!("should be Location::CSS; checked above")
+                    }.join(" ");
+
+                    // merge css with existing output units:
+                    push_to_css_output_units(
+                        &mut output_units,
+                        CSSOutputUnit{
+                            selector: selector,
+                            keyvals: other_unit.keyvals
+                        }
+                    );
+
+                }
+
+                Some(OutputUnit::CSS{
+                    media: media.join(" and "),
+                    inner: output_units
+                })
+
+            },
+            Location::FontFace => {
+
+                // doesn't currently handle merging empty blocks inside these,
+                // since we may have different font faces next to eachother.
+                // need to merge them before we get this far.
+                Some(OutputUnit::FontFace(unit.keyvals))
+
+            },
+            Location::KeyframesOuter{..} => {
+
+                // ignore this; should have been picked up earlier, and is not valid
+                // to have css at this level
+                self.next()
+
+            },
+            Location::KeyframesInner{name,inner} => {
+
+                let mut output_units = vec![CSSOutputUnit{
+                    selector: inner,
+                    keyvals: unit.keyvals
+                }];
+
+                loop {
+
+                    // loop as long as we find another KeyframesInner unit with matching name:
+                    if let Some(&Unit{location: Location::KeyframesInner{ name: ref name2,..},..}) = self.iter.peek() {
+                        if *name2 != name { break; }
+                    } else {
+                        break;
+                    }
+
+                    let mut other_unit = self.iter.next().unwrap();
+                    let selector = match other_unit.location {
+                        Location::KeyframesInner{inner,..} => inner,
+                        _ => unreachable!("should be Location::KeyframesInner; checked above")
+                    };
+
+                    // merge css with existing output units:
+                    push_to_css_output_units(
+                        &mut output_units,
+                        CSSOutputUnit{
+                            selector: selector,
+                            keyvals: other_unit.keyvals
+                        }
+                    );
+
+                }
+
+                Some(OutputUnit::KeyFrame{
+                    name: name,
+                    inner: output_units
+                })
+
+            }
+        }
 
     }
+}
+
+fn push_to_css_output_units(units: &mut Vec<CSSOutputUnit>, mut unit: CSSOutputUnit) {
+    if let Some(last) = units.last_mut() {
+        if last.selector == unit.selector {
+            last.keyvals.append(&mut unit.keyvals);
+            return;
+        }
+    }
+    units.push(unit);
 }
 
 /// Iterate over an EvaluatedBlock, outputting Result<Unit,Error>'s until we run out.
@@ -204,7 +313,7 @@ impl Iterator for UnitIterator {
 
 /// given a block and a location, output a new location (based on the block and last location) +
 /// a new set of entries, or an error if something doesn't work out doing this.
-fn make_stack_frame(block: EvaluatedBlock, mut location: Location) -> Result<UnitIteratorFrame,Error> {
+fn make_stack_frame(block: EvaluatedBlock, location: Location) -> Result<UnitIteratorFrame,Error> {
 
     use self::Location::*;
 
