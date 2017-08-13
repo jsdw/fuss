@@ -53,7 +53,7 @@ pub struct CSSBlockInner {
 
 impl_rdp! {
     grammar! {
-        file = { whitespace* ~ block_inner ~ whitespace* ~ eoi }
+        file = { n ~ block_inner ~ n ~ eoi }
         expression = {
             { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
             infix0 = { infix0_op }
@@ -73,21 +73,21 @@ impl_rdp! {
 
         block = { keyframes_block | font_face_block | media_block | css_block }
 
-            keyframes_block = { ["@keyframes"] ~ block_selector ~ block_open ~ block_inner ~ block_close }
-            font_face_block = { ["@font-face"] ~ block_open ~ block_inner ~ block_close }
-            media_block = { ["@media"] ~ block_selector ~ block_open ~ block_inner ~ block_close }
-            css_block = { block_selector ~ block_open ~ block_inner ~ block_close }
+            keyframes_block = { ["@keyframes"] ~n~ block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
+            font_face_block = { ["@font-face"] ~n~ block_open ~n~ block_inner ~n~ block_close }
+            media_block = { ["@media"] ~n~ block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
+            css_block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
 
             block_open = { ["{"] }
             block_inner = _{ (block_assignment | block_css | block_expression)* }
             block_close = { ["}"] }
 
-            block_expression = { (function_application | variable_accessor) ~ [";"]? | block }
-            block_interpolated_expression = { ["${"] ~ expression ~ ["}"] }
-            block_assignment = { block_variable_assign ~ expression ~ [";"]? }
+            block_expression = { (function_application | variable_accessor | block) ~ END }
+            block_interpolated_expression = { ["${"] ~n~ expression ~n~ ["}"] }
+            block_assignment = { block_variable_assign ~n~ expression ~ END }
                 block_variable_assign = @{ variable ~ [":"] }
 
-            block_css = { block_css_key ~ [":"] ~ block_css_value ~ [";"] }
+            block_css = { block_css_key ~ [":"] ~n~ block_css_value ~ END }
             block_selector = { ( block_interpolated_expression | block_selector_chars )* }
                 block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
 
@@ -102,18 +102,18 @@ impl_rdp! {
             prefix_application_fn = { ["-"] | ["!"] }
             prefix_application_arg = !@{ paren_expression | application | variable_accessor }
 
-            function_application = { function_application_fn ~ ["("] ~ function_application_args ~ [")"] }
+            function_application = { function_application_fn ~ ["("] ~n~ function_application_args ~n~ [")"] }
             function_application_fn = { variable_accessor | paren_expression }
-            function_application_args = { ( function_application_arg ~ ([","] ~ function_application_arg)* )? }
+            function_application_args = { ( function_application_arg ~n~ ([","] ~n~ function_application_arg)* )? }
             function_application_arg = { expression }
 
-        paren_expression = { ["("] ~ expression ~ [")"] }
+        paren_expression = { ["("] ~n~ expression ~n~ [")"] }
         variable = @{ ["$"] ~ variable_name }
         variable_accessor = @{ variable ~ ( ["."] ~ variable_name )* }
-        if_then_else = { ["if"] ~ expression ~ ["then"] ~ expression ~ ["else"] ~ expression }
+        if_then_else = { ["if"] ~n~ expression ~n~ ["then"] ~n~ expression ~n~ ["else"] ~n~ expression }
 
-        function = { ["("] ~ function_args? ~ [")"] ~ ["=>"] ~ function_expression }
-            function_args = { variable ~ ( [","] ~ variable )* }
+        function = { ["("] ~n~ function_args? ~n~ [")"] ~n~ ["=>"] ~n~ function_expression }
+            function_args = { variable ~n~ ( [","] ~n~ variable )* }
             function_expression = { expression }
 
         variable_name = { (['a'..'z'] | ['A'..'Z'] | ["_"] | ['0'..'9'])+ }
@@ -129,10 +129,13 @@ impl_rdp! {
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
 
-        whitespace = _{ ([" "] | ["\n"] | ["\t"] | ["\r"])+ }
-        comment = _{ block_comment } //| eol_comment }
+        END = _{ whitespace* ~ ([";"] | N | eoi) ~ n }
+        n = _{ (["\r"] | ["\n"] | whitespace)* }
+        N = _{ whitespace* ~ (["\r"] | ["\n"])+ ~ n }
+        whitespace = _{ ([" "] | ["\t"])+ }
+        comment = _{ block_comment | eol_comment }
             block_comment = _{ ["/*"] ~ (block_comment | ( !(block_comment | ["*/"]) ~ any))* ~ ["*/"] }
-            //eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
+            eol_comment = _{ ["//"] ~ (!n ~ any)* ~ n }
 
     }
 
@@ -902,7 +905,7 @@ mod test {
                     }))))
                 ]
             })));
-        "{ .hello { a:1; } .another { b:1; } }" =>
+        "{ .hello { a:1; }; .another { b:1; }; }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
                 scope: hash_map![],
                 selector: vec![],
@@ -971,8 +974,8 @@ mod test {
             -moz-background-color: 1px solid blue;
             border-radius: 10px;
         }" => block[];
-        "{ $lark: {}; .stuff {} }" => block[];
-        "{ .stuff {} $lark: {}; }" => block[];
+        "{ $lark: {}; .stuff {}; }" => block[];
+        "{ .stuff {}; $lark: {}; }" => block[];
         ".some-class:not(:last-child) {
 
             /* A comment! */
