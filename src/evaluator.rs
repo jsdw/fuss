@@ -39,8 +39,8 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
             // if asked to, try and dig into the variable, failing
             // as soon as we don't have a scope to dig into any more.
             for key in rest {
-                if let Expr::Block(ref block) = var.expr {
-                    match block.scope().and_then(|s| s.get(&key)) {
+                if let Expr::EvaluatedBlock(ref b) = var.expr {
+                    match b.block.scope().and_then(|s| s.get(&key)) {
                         Some(val) => {
                             var = val;
                         },

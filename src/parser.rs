@@ -292,7 +292,7 @@ impl_rdp! {
             }
         }
         _block(&self) -> Expr {
-            (_:keyframes_block, name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+            (_:keyframes_block, _:block_selector, name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
                 Expr::Block(Block::KeyframesBlock(KeyframesBlock{
                     name: name.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,
@@ -305,7 +305,7 @@ impl_rdp! {
                     css: inner.css
                 }))
             },
-            (_:media_block, query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+            (_:media_block, _:block_selector, query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
                 Expr::Block(Block::MediaBlock(MediaBlock{
                     query: query.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,

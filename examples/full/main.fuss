@@ -1,55 +1,75 @@
+@media some-media-thing {
 
-$other: $import("other")
-$hello: ($a) => $a + 2px
-$fn: ($a) => .hi { background-color: $a; }
-$block: {
-    $a: .hello.there {
+    $other: $import("other")
+    $hello: ($a) => $a + 2px
+    $fn: ($a) => .hi { background-color: $a; }
+    $block: {
+        $a: .hello.there {
+            color: red;
+        }
+        $b: .another.there {
+            color: blue;
+        }
+    }; /* optional semi-colon */
+
+    $padding: 5px;
+    $mixin: ($a) =>
+        ${ $a }-class {
+            color: red;
+        }
+
+    $mixin("-moz")
+    $mixin("-webkit")
+
+    .more .bits {
         color: red;
-    }
-    $b: .another.there {
-        color: blue;
-    }
-}; /* optional semi-colon */
-
-$padding: 5px;
-$mixin: ($a) =>
-    ${ $a }-class {
-        color: red;
-    }
-
-$mixin("-moz")
-$mixin("-webkit")
-
-.more .bits {
-    color: red;
-    padding: $padding;
-
-    .yet.more {
-        color:blue;
         padding: $padding;
-        .and.more {
-            color: green;
+
+        .yet.more {
+            color:blue;
+            padding: $padding;
+            .and.more {
+                color: green;
+            }
+        }
+
+        .hello.there {
+            opacity: 0;
+            {
+                one: 1;
+                two: 2;
+                three: 3;
+            }
+            {
+                four: 4;
+                five: 5;
+                six: 6;
+            }
+        }
+
+    }
+    .another {
+        woop: blue;
+        @media another-media-lark {
+            opacity: 0;
         }
     }
-
-    .hello.there {
-        opacity: 0;
+    .hello {
+        another: ${ $hello(1px) };
+        $fn(2px)
     }
 
-}
-.another {
-    woop: blue;
-}
-.hello {
-    another: ${ $hello(1px) };
-    $fn(2px)
-}
+    $fn(400px)
+    $block.a; /* semi-colons are optional */
+    $block.b
 
-$fn(400px)
-$block.a; /* semi-colons are optional */
-$block.b
+    @keyframes my-animation {
+        from { hello: 2px; }
+    }
 
-.sharks {
-    $other.another
-    margin: ${ $other.a + $other.b };
+    .sharks {
+        $other.another
+        margin: ${ $other.a + $other.b };
+    }
+
 }
