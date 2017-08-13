@@ -292,52 +292,32 @@ impl_rdp! {
             }
         }
         _block(&self) -> Expr {
-            (_:keyframes_block, res: _keyframes_block()) => {
-                Expr::Block(Block::KeyframesBlock(res))
-            },
-            (_:font_face_block, res: _font_face_block()) => {
-                Expr::Block(Block::FontFaceBlock(res))
-            },
-            (_:media_block, res: _media_block()) => {
-                Expr::Block(Block::MediaBlock(res))
-            },
-            (_:css_block, res: _css_block()) => {
-                Expr::Block(Block::CSSBlock(res))
-            }
-        }
-        _keyframes_block(&self) -> UnevaluatedKeyframesBlock {
-            (name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                KeyframesBlock{
+            (_:keyframes_block, name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                Expr::Block(Block::KeyframesBlock(KeyframesBlock{
                     name: name.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,
                     inner: inner.css
-                }
-            }
-        }
-        _font_face_block(&self) -> UnevaluatedFontFaceBlock {
-            (_:block_open, inner:_css_block_inner(), _:block_close) => {
-                FontFaceBlock{
+                }))
+            },
+            (_:font_face_block, _:block_open, inner:_css_block_inner(), _:block_close) => {
+                Expr::Block(Block::FontFaceBlock(FontFaceBlock{
                     scope: inner.scope,
                     css: inner.css
-                }
-            }
-        }
-        _media_block(&self) -> UnevaluatedMediaBlock {
-            (query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                MediaBlock{
+                }))
+            },
+            (_:media_block, query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                Expr::Block(Block::MediaBlock(MediaBlock{
                     query: query.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,
                     css: inner.css
-                }
-            }
-        }
-        _css_block(&self) -> UnevaluatedCSSBlock {
-            (selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                CSSBlock{
+                }))
+            },
+            (_:css_block, _:block_selector, selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                Expr::Block(Block::CSSBlock(CSSBlock{
                     selector: selector.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,
                     css: inner.css
-                }
+                }))
             }
         }
         _block_selector(&self) -> LinkedList<CSSBit> {
@@ -823,28 +803,28 @@ mod test {
         ".some-class {
             /* empty */
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![],
                 css: vec![]
-            }));
+            })));
     }
 
     process_test!{test_block_e;
         ".some-class {
             $hello: 2px;
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
                 ],
                 css: vec![]
-            }));
+            })));
         ".some-class {
             $hello: ($a, $b) => true;
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
@@ -854,36 +834,36 @@ mod test {
                     })
                 ],
                 css: vec![]
-            }));
+            })));
         ".some-class {
             $hello: { };
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
-                    s("hello") => e(Expr::Block(Block{
+                    s("hello") => e(Expr::Block(Block::CSSBlock(CSSBlock{
                         selector: vec![],
                         scope: hash_map![],
                         css: vec![]
-                    }))
+                    })))
                 ],
                 css: vec![]
-            }));
+            })));
         ".some-class {
             $hello;
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![],
                 css: vec![
                     CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
                 ]
-            }));
+            })));
         ".some-class {
             $hello: ($a, $b) => true;
             $hello;
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
@@ -895,14 +875,14 @@ mod test {
                 css: vec![
                     CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
                 ]
-            }));
+            })));
         "{
             border: 1px solid black;
             {
                 lark: another thing hereee;
             }
         }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 scope: hash_map![],
                 selector: vec![],
                 css: vec![
@@ -910,7 +890,7 @@ mod test {
                         key: vec![CSSBit::Str(s("border"))],
                         val: vec![CSSBit::Str(s("1px solid black"))]
                     },
-                    CSSEntry::Expr(e(Expr::Block(Block{
+                    CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
                         selector: vec![],
                         css: vec![
@@ -919,15 +899,15 @@ mod test {
                                 val: vec![CSSBit::Str(s("another thing hereee"))]
                             }
                         ]
-                    })))
+                    }))))
                 ]
-            }));
+            })));
         "{ .hello { a:1; } .another { b:1; } }" =>
-            e(Expr::Block(Block{
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
                 scope: hash_map![],
                 selector: vec![],
                 css: vec![
-                    CSSEntry::Expr(e(Expr::Block(Block{
+                    CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
                         selector: vec![CSSBit::Str(s(".hello "))],
                         css: vec![
@@ -936,8 +916,8 @@ mod test {
                                 val: vec![CSSBit::Str(s("1"))]
                             }
                         ]
-                    }))),
-                    CSSEntry::Expr(e(Expr::Block(Block{
+                    })))),
+                    CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
                         selector: vec![CSSBit::Str(s(".another "))],
                         css: vec![
@@ -946,9 +926,9 @@ mod test {
                                 val: vec![CSSBit::Str(s("1"))]
                             }
                         ]
-                    })))
+                    }))))
                 ]
-            }));
+            })));
     }
 
     parse_test!(test_file_expression;
