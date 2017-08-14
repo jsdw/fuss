@@ -53,7 +53,11 @@ pub struct CSSBlockInner {
 
 impl_rdp! {
     grammar! {
+
+        // a file begins as if we are inside a block already, to reduce boilerplate:
         file = { n ~ block_inner ~ n ~ eoi }
+
+        // different types of expression, plus infix ops in reverse precedence order:
         expression = {
             { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
             infix0 = { infix0_op }
@@ -63,6 +67,8 @@ impl_rdp! {
             infix4 = { infix4_op }
             infix5 = {< infix5_op }
         }
+
+        // all of our allowed infix ops:
         infix0_op = { ["||"] }
         infix1_op = { ["&&"] }
         infix2_op = { ["=="] | ["!="] | [">="] | ["<="] | [">"] | ["<"] }
@@ -70,7 +76,7 @@ impl_rdp! {
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
 
-
+        // our block types; typically some selector and then contents inside { }:
         block = { keyframes_block | font_face_block | media_block | css_block }
 
             keyframes_block = { ["@keyframes"] ~n~ block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
@@ -94,8 +100,9 @@ impl_rdp! {
             block_css_key = { (block_interpolated_expression | block_css_key_chars)+ }
                 block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
             block_css_value = { (block_interpolated_expression | variable | block_css_value_chars)+ }
-                block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"]) ~ any )+ }
+                block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"] | ["}"]) ~ any )+ }
 
+        // covers not-infix function application eg !$a, and $a($b,$c):
         application = { prefix_application | function_application }
 
             prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
@@ -107,7 +114,9 @@ impl_rdp! {
             function_application_args = { ( function_application_arg ~n~ ([","] ~n~ function_application_arg)* )? }
             function_application_arg = { expression }
 
+        // any expression can also exist in parentheses:
         paren_expression = { ["("] ~n~ expression ~n~ [")"] }
+
         variable = @{ ["$"] ~ variable_name }
         variable_accessor = @{ variable ~ ( ["."] ~ variable_name )* }
         if_then_else = { ["if"] ~n~ expression ~n~ ["then"] ~n~ expression ~n~ ["else"] ~n~ expression }
@@ -129,10 +138,20 @@ impl_rdp! {
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
 
-        END = _{ whitespace* ~ ([";"] | N | eoi) ~ n }
+        // is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
+        // , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
+        END = _{ whitespace* ~ ([";"] | N | eoi | &["}"]) ~ n }
+
+        // matches but does not expect a newline:
         n = _{ (["\r"] | ["\n"] | whitespace)* }
+
+        // matches and expects a newline.
         N = _{ whitespace* ~ (["\r"] | ["\n"])+ ~ n }
+
+        // normal whitespace allowed is just tabs and spaces; we're explicit about newlines:
         whitespace = _{ ([" "] | ["\t"])+ }
+
+        // allow block and "//" style comments
         comment = _{ block_comment | eol_comment }
             block_comment = _{ ["/*"] ~ (block_comment | ( !(block_comment | ["*/"]) ~ any))* ~ ["*/"] }
             eol_comment = _{ ["//"] ~ (!n ~ any)* ~ n }
@@ -325,7 +344,7 @@ impl_rdp! {
         }
         _block_selector(&self) -> LinkedList<CSSBit> {
             (&chars:block_selector_chars, mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
                 tail
             },
             (_:block_interpolated_expression, expr:_expression(), mut tail: _block_selector()) => {
@@ -387,7 +406,7 @@ impl_rdp! {
                 tail
             },
             (&chars:block_css_key_chars, mut tail:_block_css_key()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
                 tail
             },
             () => {
@@ -404,7 +423,7 @@ impl_rdp! {
                 tail
             },
             (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
                 tail
             },
             () => {
@@ -807,7 +826,7 @@ mod test {
             /* empty */
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![],
                 css: vec![]
             })));
@@ -818,7 +837,7 @@ mod test {
             $hello: 2px;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![
                     s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
                 ],
@@ -828,7 +847,7 @@ mod test {
             $hello: ($a, $b) => true;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
@@ -842,7 +861,7 @@ mod test {
             $hello: { };
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![
                     s("hello") => e(Expr::Block(Block::CSSBlock(CSSBlock{
                         selector: vec![],
@@ -856,7 +875,7 @@ mod test {
             $hello;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![],
                 css: vec![
                     CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
@@ -867,7 +886,7 @@ mod test {
             $hello;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class "))],
+                selector: vec![CSSBit::Str(s(".some-class"))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
@@ -912,7 +931,7 @@ mod test {
                 css: vec![
                     CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
-                        selector: vec![CSSBit::Str(s(".hello "))],
+                        selector: vec![CSSBit::Str(s(".hello"))],
                         css: vec![
                             CSSEntry::KeyVal{
                                 key: vec![CSSBit::Str(s("a"))],
@@ -922,7 +941,7 @@ mod test {
                     })))),
                     CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
-                        selector: vec![CSSBit::Str(s(".another "))],
+                        selector: vec![CSSBit::Str(s(".another"))],
                         css: vec![
                             CSSEntry::KeyVal{
                                 key: vec![CSSBit::Str(s("b"))],
@@ -936,6 +955,12 @@ mod test {
 
     parse_test!(test_file_expression;
         "$hello: 1px; $another: 2px;" => file[];
+    );
+
+    parse_test!(test_endings;
+        "{ $a: 2 }" => block[]; //no semicolon or newline ending assignment OK at end of block
+        "{ $a: 2; .hello.there {} }" => block[]; //block ending OK at end of block
+        "{{{}};{}}" => block[]; //empty blocks are fine next to eachother.
     );
 
     parse_test!{test_block_more;

@@ -64,8 +64,6 @@ pub struct CSSBlock<Selector,CSS> {
     pub selector: Selector,
     pub css: Vec<CSS>
 }
-pub type UnevaluatedCSSBlock = CSSBlock<Vec<CSSBit>, CSSEntry>;
-pub type EvaluatedCSSBlock = CSSBlock<String, EvaluatedCSSEntry>;
 
 /// A keyframes animation block
 #[derive(PartialEq,Debug,Clone)]
@@ -74,8 +72,6 @@ pub struct KeyframesBlock<Name, Inner> {
     pub name: Name,
     pub inner: Vec<Inner>
 }
-pub type UnevaluatedKeyframesBlock = KeyframesBlock<Vec<CSSBit>, CSSEntry>;
-pub type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
 
 /// A media query block.
 #[derive(PartialEq,Debug,Clone)]
@@ -84,8 +80,6 @@ pub struct MediaBlock<Query,CSS> {
     pub query: Query,
     pub css: Vec<CSS>
 }
-pub type UnevaluatedMediaBlock = MediaBlock<Vec<CSSBit>, CSSEntry>;
-pub type EvaluatedMediaBlock = MediaBlock<String, EvaluatedCSSEntry>;
 
 /// A font face block.
 #[derive(PartialEq,Debug,Clone)]
@@ -93,8 +87,6 @@ pub struct FontFaceBlock<CSS> {
     pub scope: HashMap<String,Expression>,
     pub css: Vec<CSS>
 }
-pub type UnevaluatedFontFaceBlock = FontFaceBlock<CSSEntry>;
-pub type EvaluatedFontFaceBlock = FontFaceBlock<EvaluatedCSSEntry>;
 
 impl<T,U> Block<T,U> {
     pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
@@ -248,6 +240,5 @@ pub enum ErrorType {
     CannotReadFile(PathBuf),
     ImportError(Box<Error>),
     BlockNotAllowedInFontFace,
-    BlockNotAllowedInKeyframes,
-    ExpectedStringFromCSSBits(Vec<CSSBit>)
+    BlockNotAllowedInKeyframes
 }

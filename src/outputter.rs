@@ -131,7 +131,7 @@ impl <T> Iterator for OutputUnitIterator<T> where T: Iterator<Item=Unit> {
     type Item = OutputUnit;
     fn next(&mut self) -> Option<Self::Item> {
 
-        let mut unit = match self.iter.next() {
+        let unit = match self.iter.next() {
             None => return None,
             Some(unit) => unit
         };
@@ -153,7 +153,7 @@ impl <T> Iterator for OutputUnitIterator<T> where T: Iterator<Item=Unit> {
                         break;
                     }
 
-                    let mut other_unit = self.iter.next().unwrap();
+                    let other_unit = self.iter.next().unwrap();
                     let selector = match other_unit.location {
                         Location::CSS{css,..} => css,
                         _ => unreachable!("should be Location::CSS; checked above")
@@ -207,7 +207,7 @@ impl <T> Iterator for OutputUnitIterator<T> where T: Iterator<Item=Unit> {
                         break;
                     }
 
-                    let mut other_unit = self.iter.next().unwrap();
+                    let other_unit = self.iter.next().unwrap();
                     let selector = match other_unit.location {
                         Location::KeyframesInner{inner,..} => inner,
                         _ => unreachable!("should be Location::KeyframesInner; checked above")
