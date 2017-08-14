@@ -140,7 +140,7 @@ impl_rdp! {
 
         // is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
         // , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
-        END = _{ whitespace* ~ ([";"] | N | eoi | &["}"]) ~ n }
+        END = _{ whitespace* ~ (([";"] | N | eoi) ~ n | &["}"]) }
 
         // matches but does not expect a newline:
         n = _{ (["\r"] | ["\n"] | whitespace)* }
