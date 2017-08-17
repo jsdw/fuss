@@ -2,6 +2,326 @@ use types::*;
 use std::iter::Peekable;
 use std::io::{self, Write};
 
+
+
+
+
+
+
+struct Loc {
+    media: Vec<String>,
+    selector: Vec<String>
+}
+struct CSS {
+    media: Vec<String>,
+    selector: Vec<String>,
+    keyvals: Vec<(String,String)>
+}
+struct Keyframes {
+    name: String,
+    inner: Vec<KeyframesInner>
+}
+struct KeyframesInner {
+    selector: String,
+    keyvals: Vec<(String,String)>
+}
+struct FontFace {
+    keyvals: Vec<(String,String)>
+}
+struct Items {
+    css: Vec<Result<CSS,Error>>,
+    keyframes: Vec<Result<Keyframes,Error>>,
+    fontface: Vec<Result<FontFace,Error>>
+}
+
+impl Items {
+
+    fn new() -> Items {
+        Items {
+            fontface: vec![],
+            keyframes: vec![],
+            css: vec![]
+        }
+    }
+
+    fn populate_from_block(&mut self, entries: Vec<EvaluatedCSSEntry>, loc: Loc) {
+
+        let mut keyvals = vec![];
+        for entry in entries {
+
+            match entry {
+                EvaluatedCSSEntry::KeyVal{key,val} => {
+                    keyvals.push( (key,val) );
+                },
+
+                EvaluatedCSSEntry::Block(block) => {
+
+                    match block.block {
+                        Block::KeyframesBlock(b) => {
+
+                            self.keyframes.push(handle_keyframes(b));
+
+                        },
+                        Block::FontFaceBlock(b) => {
+
+                            self.fontface.push(handle_fontface(b));
+
+                        },
+                        Block::MediaBlock(b) => {
+
+                            if keyvals.len() > 0 {
+                                self.css.push(Ok(CSS{
+                                    media: loc.media.clone(),
+                                    selector: loc.selector.clone(),
+                                    keyvals: keyvals
+                                }));
+                            }
+
+                            let new_loc = Loc {
+                                media: { let m = loc.media.clone().push(b.query); m },
+                                selector: loc.selector.clone()
+                            };
+
+                            self.populate_from_block(b.css, new_loc);
+
+                        },
+                        Block::CSSBlock(b) => {
+
+                            if keyvals.len() > 0 {
+                                self.css.push(Ok(CSS{
+                                    media: loc.media.clone(),
+                                    selector: loc.selector.clone(),
+                                    keyvals: keyvals
+                                }));
+                            }
+
+                            let new_loc = Loc {
+                                media: loc.media.clone(),
+                                selector: { let s = loc.selector.clone().push(b.selector); s }
+                            };
+
+                            self.populate_from_block(b.css, new_loc);
+
+                        }
+                    }
+
+
+                }
+            }
+
+        };
+        if keyvals.len() > 0 {
+            self.css.push(Ok(CSS{
+                media: loc.media,
+                selector: loc.selector,
+                keyvals: keyvals
+            }));
+        }
+
+    }
+
+}
+
+fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Keyframes {
+
+}
+fn handle_fontface(block: EvaluatedFontFaceBlock) -> FontFace {
+
+}
+
+
+
+
+
+
+struct ItemIterator {
+    stack: Vec<ItemIteratorFrame>,
+    keyframes: Vec<Result<Keyframes,Error>>,
+    fontface: Vec<Result<FontFace,Error>>
+}
+struct ItemIteratorFrame {
+    media: Vec<String>,
+    selector: Vec<String>,
+    entries: Vec<EvaluatedCSSEntry>
+}
+
+impl ItemIterator {
+    fn from_evaluated_block(block: EvaluatedBlock) -> ItemIterator {
+        ItemIterator{
+            stack: vec![
+                ItemIteratorFrame{
+                    entries: vec![EvaluatedCSSEntry::Block(block)],
+                    media: vec![],
+                    selector: vec![]
+                }
+            ]
+        }
+    }
+}
+
+impl Iterator for ItemIterator {
+    type Item = Result<Item,Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+
+        let ItemIteratorFrame{mut entries,mut media,mut selector} = match self.stack.pop() {
+            None => {
+
+                // unload our keyframe and fontface buffers
+                // once we have no CSS stuff left:
+                if let Some(k) = self.keyframes.pop() {
+                    return Some(Ok(Item::Keyframes(k)));
+                }
+                if let Some(f) = self.fontface.pop() {
+                    return Some(Ok(Item::FontFace(f)));
+                }
+                return None;
+
+            },
+            Some(s) => s
+        };
+
+        // short circuit if we have nout to look at
+        // in our current stack frame, and try again
+        // the next frame down:
+        if entries.len() == 0 {
+            return self.next();
+        }
+
+        let mut keyvals = vec![];
+        while let Some(entry) = entries.pop() {
+
+            EvaluatedCSSEntry::KeyVal{key,val} => {
+                keyvals.push( (key,val) );
+            },
+
+            EvaluatedCSSEntry::Block(block) => {
+
+                match block.block {
+                    Block::KeyframesBlock(b) => {
+
+                        self.keyframes.push(handle_keyframes(b));
+
+                    },
+                    Block::FontFaceBlock(b) => {
+
+                        self.fontface.push(handle_fontface(b));
+
+                    },
+                    Block::MediaBlock(b) => {
+
+                        if entries.len() > 0 {
+                            self.stack.push(ItemIteratorFrame{
+                                entries: entries,
+                                media: media.clone(),
+                                selector: selector.clone()
+                            })
+                        }
+
+                        let mut m = media.clone();
+                        let css = { b.css.reverse(); b.css };
+
+                        m.push(b.query);
+
+                        self.stack.push(ItemIteratorFrame{
+                            entries: css,
+                            media: m,
+                            selector: selector.clone()
+                        });
+
+                        break;
+
+                    },
+                    Block::CSSBlock(b) => {
+
+                        if entries.len() > 0 {
+                            self.stack.push(ItemIteratorFrame{
+                                entries: entries,
+                                media: media.clone(),
+                                selector: selector.clone()
+                            })
+                        }
+
+                        let mut s = selector.clone();
+                        let css = { b.css.reverse(); b.css };
+
+                        s.push(b.selector);
+
+                        self.stack.push(ItemIteratorFrame{
+                            entries: css,
+                            media: media.clone(),
+                            selector: selector.clone()
+                        });
+
+                        break;
+
+                    }
+                }
+
+            }
+
+        }
+
+        if keyvals.len() > 0 {
+            Some(Ok(Item::CSS{
+                media: media,
+                selector: selector,
+                keyvals: keyvals
+            }))
+        } else {
+            self.next()
+        }
+
+    }
+}
+
+
+/*
+        let mut keyvals = vec![];
+        while let Some(entry) = top.pop() {
+
+            match entry {
+                // push keyvals to our list. since they are already
+                // back to front, they will end up in the right order
+                // again in keyvals:
+                EvaluatedCSSEntry::KeyVal{key,val} => {
+                    keyvals.push( (key,val) );
+                },
+                // if we hit a block, add the block to our stack
+                // (and replace the current top if needed to keep
+                // the stack in order), then break, as we're done for now.
+                EvaluatedCSSEntry::Block(block) => {
+                    if top.len() > 0 { self.stack.push( (top,location.clone()) ); }
+                    match make_stack_frame(block, location.clone()) {
+                        Err(err) => return Some(Err(err)),
+                        Ok(frame) => self.stack.push(frame)
+                    };
+                    break;
+                }
+            }
+
+        }
+
+        if keyvals.len() > 0 {
+            Some(Ok(Unit{
+                location: location.clone(),
+                keyvals: keyvals
+            }))
+        } else {
+            self.next()
+        }
+
+*/
+
+
+
+
+
+
+
+
+
+
+
 /// the only thing we expose from this:
 pub fn print_css(block: EvaluatedBlock) {
 
@@ -81,7 +401,6 @@ fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &m
         *s += ";\n";
     }
 }
-
 
 /// represent the current location, disallowing invalid states as best we can:
 #[derive(Clone,Debug,PartialEq)]

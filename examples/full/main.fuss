@@ -67,6 +67,9 @@
     @keyframes my-animation {
         from { hello: 2px; }
     }
+    @keyframes my-animation {
+        to { bye: 2px; }
+    }
 
     .sharks {
         $other.another

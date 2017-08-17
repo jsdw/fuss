@@ -72,6 +72,7 @@ pub struct KeyframesBlock<Name, Inner> {
     pub name: Name,
     pub inner: Vec<Inner>
 }
+type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
 
 /// A media query block.
 #[derive(PartialEq,Debug,Clone)]
@@ -87,6 +88,7 @@ pub struct FontFaceBlock<CSS> {
     pub scope: HashMap<String,Expression>,
     pub css: Vec<CSS>
 }
+type EvaluatedFontFaceBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
 
 impl<T,U> Block<T,U> {
     pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
