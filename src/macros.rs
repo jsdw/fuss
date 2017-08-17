@@ -4,25 +4,21 @@
 /// so that it can pluck out only what it needs from the struct, rather than
 /// trying to move the whole thing
 macro_rules! err {
-    (NO_LOC $err:expr) => ({
-        use std::path::PathBuf;
-        Err(Error{
-            ty: $err,
-            file: PathBuf::new(),
-            start: Position::new(),
-            end: Position::new()
-        })
-    });
+    ($e:ident, $err:expr) => ({
+        Err(naked_err!($e, $err))
+    })
+}
+macro_rules! naked_err {
     ($e:ident, $err:expr) => ({
         use std::path::PathBuf;
         let start = $e.start;
         let end = $e.end;
-        Err(Error{
+        Error{
             ty: $err,
             file: PathBuf::new(),
             start: start,
             end: end
-        })
+        }
     })
 }
 

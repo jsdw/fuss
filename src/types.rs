@@ -72,7 +72,7 @@ pub struct KeyframesBlock<Name, Inner> {
     pub name: Name,
     pub inner: Vec<Inner>
 }
-type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
+pub type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
 
 /// A media query block.
 #[derive(PartialEq,Debug,Clone)]
@@ -88,7 +88,7 @@ pub struct FontFaceBlock<CSS> {
     pub scope: HashMap<String,Expression>,
     pub css: Vec<CSS>
 }
-type EvaluatedFontFaceBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
+pub type EvaluatedFontFaceBlock = FontFaceBlock<EvaluatedCSSEntry>;
 
 impl<T,U> Block<T,U> {
     pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
@@ -241,6 +241,12 @@ pub enum ErrorType {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportError(Box<Error>),
-    BlockNotAllowedInFontFace,
-    BlockNotAllowedInKeyframes
+
+    // outputter errors:
+    Keyframes_KeyvalsNotAllowedAtTop,
+    Keyframes_KeyframesBlockNotAllowed,
+    Keyframes_FontFaceBlockNotAllowed,
+    Keyframes_MediaBlockNotAllowed,
+    Keyframes_NestedBlockNotAllowed,
+    Fontface_BlockNotAllowed
 }

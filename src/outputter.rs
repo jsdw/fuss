@@ -3,9 +3,18 @@ use std::iter::Peekable;
 use std::io::{self, Write};
 
 
+/// the only thing we expose from this:
+pub fn print_css(block: EvaluatedBlock) {
+
+    let stdout = io::stdout();
+    let mut handle = stdout.lock();
+
+    let mut items = Items::new();
+    items.populate_from_block(block);
 
 
 
+}
 
 
 struct Loc {
@@ -14,6 +23,7 @@ struct Loc {
 }
 struct CSS {
     media: Vec<String>,
+    fontfaces: Vec<Result<FontFace,Error>>,
     selector: Vec<String>,
     keyvals: Vec<(String,String)>
 }
@@ -31,21 +41,29 @@ struct FontFace {
 struct Items {
     css: Vec<Result<CSS,Error>>,
     keyframes: Vec<Result<Keyframes,Error>>,
-    fontface: Vec<Result<FontFace,Error>>
 }
 
 impl Items {
 
     fn new() -> Items {
         Items {
-            fontface: vec![],
             keyframes: vec![],
             css: vec![]
         }
     }
 
-    fn populate_from_block(&mut self, entries: Vec<EvaluatedCSSEntry>, loc: Loc) {
+    fn populate_from_block(&mut self, block: EvaluatedBlock) {
 
+        let entries = vec![ EvaluatedCSSEntry::Block(block) ];
+        let loc = Loc{ media: vec![], selector: vec![] };
+
+        self.populate_from_entries(entries, loc);
+
+    }
+
+    fn populate_from_entries(&mut self, entries: Vec<EvaluatedCSSEntry>, loc: Loc) {
+
+        let mut fontfaces = vec![];
         let mut keyvals = vec![];
         for entry in entries {
 
@@ -59,12 +77,18 @@ impl Items {
                     match block.block {
                         Block::KeyframesBlock(b) => {
 
-                            self.keyframes.push(handle_keyframes(b));
+                            self.keyframes.push(match handle_keyframes(b) {
+                                Err(e) => err!(block, e),
+                                Ok(v) => Ok(v)
+                            });
 
                         },
                         Block::FontFaceBlock(b) => {
 
-                            self.fontface.push(handle_fontface(b));
+                            fontfaces.push(match handle_fontface(b) {
+                                Err(e) => err!(block, e),
+                                Ok(v) => Ok(v)
+                            });
 
                         },
                         Block::MediaBlock(b) => {
@@ -73,16 +97,18 @@ impl Items {
                                 self.css.push(Ok(CSS{
                                     media: loc.media.clone(),
                                     selector: loc.selector.clone(),
+                                    fontfaces: fontfaces,
                                     keyvals: keyvals
                                 }));
                             }
 
                             let new_loc = Loc {
-                                media: { let m = loc.media.clone().push(b.query); m },
+                                media: { let mut m = loc.media.clone(); m.push(b.query); m },
                                 selector: loc.selector.clone()
                             };
 
-                            self.populate_from_block(b.css, new_loc);
+                            self.populate_from_entries(b.css, new_loc);
+                            return;
 
                         },
                         Block::CSSBlock(b) => {
@@ -91,16 +117,18 @@ impl Items {
                                 self.css.push(Ok(CSS{
                                     media: loc.media.clone(),
                                     selector: loc.selector.clone(),
+                                    fontfaces: fontfaces,
                                     keyvals: keyvals
                                 }));
                             }
 
                             let new_loc = Loc {
                                 media: loc.media.clone(),
-                                selector: { let s = loc.selector.clone().push(b.selector); s }
+                                selector: { let mut s = loc.selector.clone(); s.push(b.selector); s }
                             };
 
-                            self.populate_from_block(b.css, new_loc);
+                            self.populate_from_entries(b.css, new_loc);
+                            return;
 
                         }
                     }
@@ -114,6 +142,7 @@ impl Items {
             self.css.push(Ok(CSS{
                 media: loc.media,
                 selector: loc.selector,
+                fontfaces: fontfaces,
                 keyvals: keyvals
             }));
         }
@@ -122,10 +151,70 @@ impl Items {
 
 }
 
-fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Keyframes {
+fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Result<Keyframes,ErrorType> {
+
+    let mut inner = vec![];
+    for item in block.inner {
+        match item {
+            EvaluatedCSSEntry::KeyVal{key,val} => {
+                return Err(ErrorType::Keyframes_KeyvalsNotAllowedAtTop);
+            },
+            EvaluatedCSSEntry::Block(block) => {
+                match block.block {
+                    Block::KeyframesBlock(b) => {
+                        return Err(ErrorType::Keyframes_KeyframesBlockNotAllowed);
+                    },
+                    Block::FontFaceBlock(b) => {
+                        return Err(ErrorType::Keyframes_FontFaceBlockNotAllowed);
+                    },
+                    Block::MediaBlock(b) => {
+                        return Err(ErrorType::Keyframes_MediaBlockNotAllowed);
+                    },
+                    Block::CSSBlock(b) => {
+                        let mut keyvals = vec![];
+                        for entry in b.css {
+                            match entry {
+                                EvaluatedCSSEntry::KeyVal{key,val} => {
+                                    keyvals.push( (key,val) );
+                                },
+                                EvaluatedCSSEntry::Block(block) => {
+                                    return Err(ErrorType::Keyframes_NestedBlockNotAllowed);
+                                }
+                            }
+                        }
+                        inner.push(KeyframesInner{
+                            selector: b.selector,
+                            keyvals: keyvals
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Keyframes{
+        name: block.name,
+        inner: inner
+    })
 
 }
-fn handle_fontface(block: EvaluatedFontFaceBlock) -> FontFace {
+fn handle_fontface(block: EvaluatedFontFaceBlock) -> Result<FontFace,ErrorType> {
+
+    let mut keyvals = vec![];
+    for item in block.css {
+        match item {
+            EvaluatedCSSEntry::KeyVal{key,val} => {
+                keyvals.push( (key,val) );
+            },
+            EvaluatedCSSEntry::Block(_) => {
+                return Err(ErrorType::Fontface_BlockNotAllowed);
+            }
+        }
+    }
+
+    Ok(FontFace{
+        keyvals: keyvals
+    })
 
 }
 
@@ -133,7 +222,7 @@ fn handle_fontface(block: EvaluatedFontFaceBlock) -> FontFace {
 
 
 
-
+/*
 struct ItemIterator {
     stack: Vec<ItemIteratorFrame>,
     keyframes: Vec<Result<Keyframes,Error>>,
@@ -717,3 +806,4 @@ fn make_stack_frame(block: EvaluatedBlock, location: Location) -> Result<UnitIte
     }
 
 }
+*/
