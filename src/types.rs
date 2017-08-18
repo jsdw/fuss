@@ -218,7 +218,7 @@ pub type Res = Result<Expression,Error>;
 pub type PrimRes = Result<Expr,ErrorType>;
 
 /// Error types
-#[derive(PartialEq,Debug)]
+#[derive(Clone,PartialEq,Debug)]
 pub struct Error {
     pub ty: ErrorType,
     pub file: PathBuf,
@@ -226,7 +226,7 @@ pub struct Error {
     pub end: Position
 }
 
-#[derive(PartialEq,Debug)]
+#[derive(Clone,PartialEq,Debug)]
 pub enum ErrorType {
     NotAValidInnerBlock,
     CantFindVariable(String),

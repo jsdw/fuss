@@ -12,32 +12,94 @@ pub fn print_css(block: EvaluatedBlock) {
     let mut items = Items::new();
     items.populate_from_block(block);
 
+    // print keyframe animations first:
+    for keyframe in items.keyframes {
+        let mut s = String::new();
+        match keyframe {
+            Ok(frame) => {
+                s += "@keyframes ";
+                s += &frame.name;
+                s += " {\n";
+                for section in frame.inner {
+                    s += "\t";
+                    s += &section.selector;
+                    s += " {\n";
+                    for keyval in section.keyvals {
+                        s += "\t\t";
+                        s += &keyval.0;
+                        s += ": ";
+                        s += &keyval.1;
+                        s += ";\n";
+                    }
+                    s += "\t}\n";
+                }
+                s += "}\n";
+            },
+            Err(e) => {
+                eprintln!("Warning: {:?}", e);
+            }
+        }
+        handle.write_all(s.as_bytes());
+    }
 
+    // print CSS blocks next:
+    for css in items.css {
+        let mut s = String::new();
+        match css {
+            Ok(block) => {
+                s += &merge_css_selector(block.selector);
+                s += " {\n";
+
+                s += "}\n";
+            },
+            Err(e) => {
+                eprintln!("Warning: {:?}", e);
+            }
+        }
+        handle.write_all(s.as_bytes());
+    }
 
 }
 
+fn merge_media_query(query: Vec<String>) -> String {
+    query.join(" and ")
+}
+fn merge_css_selector(selector: Vec<String>) -> String {
+    selector.join(" ")
+}
 
+#[derive(Clone,PartialEq,Debug)]
 struct Loc {
     media: Vec<String>,
     selector: Vec<String>
 }
+
+#[derive(Clone,PartialEq,Debug)]
 struct CSS {
     media: Vec<String>,
     fontfaces: Vec<Result<FontFace,Error>>,
     selector: Vec<String>,
     keyvals: Vec<(String,String)>
 }
+
+#[derive(Clone,PartialEq,Debug)]
 struct Keyframes {
     name: String,
     inner: Vec<KeyframesInner>
 }
+
+#[derive(Clone,PartialEq,Debug)]
 struct KeyframesInner {
     selector: String,
     keyvals: Vec<(String,String)>
 }
+
+#[derive(Clone,PartialEq,Debug)]
 struct FontFace {
     keyvals: Vec<(String,String)>
 }
+
+#[derive(Clone,PartialEq,Debug)]
 struct Items {
     css: Vec<Result<CSS,Error>>,
     keyframes: Vec<Result<Keyframes,Error>>,
@@ -93,13 +155,15 @@ impl Items {
                         },
                         Block::MediaBlock(b) => {
 
-                            if keyvals.len() > 0 {
+                            if keyvals.len() > 0 || fontfaces.len() > 0 {
                                 self.css.push(Ok(CSS{
                                     media: loc.media.clone(),
                                     selector: loc.selector.clone(),
                                     fontfaces: fontfaces,
                                     keyvals: keyvals
                                 }));
+                                fontfaces = vec![];
+                                keyvals = vec![];
                             }
 
                             let new_loc = Loc {
@@ -108,27 +172,31 @@ impl Items {
                             };
 
                             self.populate_from_entries(b.css, new_loc);
-                            return;
 
                         },
                         Block::CSSBlock(b) => {
 
-                            if keyvals.len() > 0 {
+                            if keyvals.len() > 0 || fontfaces.len() > 0 {
                                 self.css.push(Ok(CSS{
                                     media: loc.media.clone(),
                                     selector: loc.selector.clone(),
                                     fontfaces: fontfaces,
                                     keyvals: keyvals
                                 }));
+                                fontfaces = vec![];
+                                keyvals = vec![];
                             }
 
                             let new_loc = Loc {
                                 media: loc.media.clone(),
-                                selector: { let mut s = loc.selector.clone(); s.push(b.selector); s }
+                                selector: {
+                                    let mut s = loc.selector.clone();
+                                    if b.selector.len() > 0 { s.push(b.selector); }
+                                    s
+                                }
                             };
 
                             self.populate_from_entries(b.css, new_loc);
-                            return;
 
                         }
                     }
@@ -138,7 +206,7 @@ impl Items {
             }
 
         };
-        if keyvals.len() > 0 {
+        if keyvals.len() > 0 || fontfaces.len() > 0 {
             self.css.push(Ok(CSS{
                 media: loc.media,
                 selector: loc.selector,
@@ -217,8 +285,6 @@ fn handle_fontface(block: EvaluatedFontFaceBlock) -> Result<FontFace,ErrorType> 
     })
 
 }
-
-
 
 
 
