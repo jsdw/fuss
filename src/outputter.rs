@@ -21,17 +21,7 @@ pub fn print_css(block: EvaluatedBlock) {
                 s += &frame.name;
                 s += " {\n";
                 for section in frame.inner {
-                    s += "\t";
-                    s += &section.selector;
-                    s += " {\n";
-                    for keyval in section.keyvals {
-                        s += "\t\t";
-                        s += &keyval.0;
-                        s += ": ";
-                        s += &keyval.1;
-                        s += ";\n";
-                    }
-                    s += "\t}\n";
+                    css_block_into_string(1, merge_css_selector(section.selector), section.keyvals, &mut s);
                 }
                 s += "}\n";
             },
@@ -47,10 +37,21 @@ pub fn print_css(block: EvaluatedBlock) {
         let mut s = String::new();
         match css {
             Ok(block) => {
-                s += &merge_css_selector(block.selector);
-                s += " {\n";
 
-                s += "}\n";
+                let is_media = block.media.len() > 0;
+
+                if is_media {
+                    s += "@media ";
+                    s += &merge_media_query(block.media);
+                    s += "{\n";
+                }
+
+                css_block_into_string(if is_media { 1 } else { 0 }, merge_css_selector(block.selector), block.keyvals, &mut s);
+
+                if is_media {
+                    s += "}\n"
+                }
+
             },
             Err(e) => {
                 eprintln!("Warning: {:?}", e);
@@ -59,6 +60,29 @@ pub fn print_css(block: EvaluatedBlock) {
         handle.write_all(s.as_bytes());
     }
 
+}
+
+fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String,String)>, s: &mut String) {
+    let indent: String = (0..indent_count).map(|_| '\t').collect();
+
+    *s += &indent;
+    *s += &selector;
+    *s += " {\n";
+    css_keyvals_into_string(indent_count+1, css, s);
+    *s += &indent;
+    *s += "}\n";
+}
+
+fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &mut String) {
+    let indent: String = (0..indent_count).map(|_| '\t').collect();
+
+    for (key,val) in css {
+        *s += &indent;
+        *s += &key;
+        *s += ": ";
+        *s += &val;
+        *s += ";\n";
+    }
 }
 
 fn merge_media_query(query: Vec<String>) -> String {
