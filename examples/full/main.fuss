@@ -46,6 +46,11 @@
                 six: 6;
             }
             { seven: 7; eight: 8 }
+
+            &.and-this {
+                nine: 9;
+                ten: 10;
+            }
         }
 
     }
@@ -84,4 +89,9 @@
 
 @font-face {
     some-font-lark: outer;
+}
+
+@keyframes outer {
+    from { lark: 1; }
+    to { lark: 2; }
 }
