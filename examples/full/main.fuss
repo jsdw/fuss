@@ -60,6 +60,10 @@
         $fn(2px)
     }
 
+    @font-face {
+        some-font-lark: inner;
+    }
+
     $fn(400px)
     $block.a; /* semi-colons are optional */
     $block.b
@@ -76,4 +80,8 @@
         margin: ${ $other.a + $other.b };
     }
 
+}
+
+@font-face {
+    some-font-lark: outer;
 }

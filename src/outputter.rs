@@ -12,54 +12,91 @@ pub fn print_css(block: EvaluatedBlock) {
     let mut items = Items::new();
     items.populate_from_block(block);
 
+    let mut s = String::new();
+
+    println!("{:?}\n\n", items);
+
+    // print global fontfaces first:
+    for font in items.fontfaces {
+        match font {
+            Ok(block) => {
+                fontface_into_string(0, block, &mut s);
+            },
+            Err(e) => {
+                eprintln!("Warning (font-face): {:?}", e);
+            }
+        };
+    }
+
     // print keyframe animations first:
     for keyframe in items.keyframes {
-        let mut s = String::new();
         match keyframe {
             Ok(frame) => {
                 s += "@keyframes ";
                 s += &frame.name;
                 s += " {\n";
                 for section in frame.inner {
-                    css_block_into_string(1, merge_css_selector(section.selector), section.keyvals, &mut s);
+                    css_block_into_string(1, section.selector, section.keyvals, &mut s);
                 }
                 s += "}\n";
             },
             Err(e) => {
-                eprintln!("Warning: {:?}", e);
+                eprintln!("Warning (keyframes): {:?}", e);
             }
         }
-        handle.write_all(s.as_bytes());
     }
 
     // print CSS blocks next:
-    for css in items.css {
-        let mut s = String::new();
-        match css {
-            Ok(block) => {
+    for m in items.media {
 
-                let is_media = block.media.len() > 0;
+        let is_media = m.media.len() > 0;
+        let indent = if is_media { 1 } else { 0 };
 
-                if is_media {
-                    s += "@media ";
-                    s += &merge_media_query(block.media);
-                    s += "{\n";
-                }
+        if is_media {
+            s += "@media ";
+            s += &merge_media_query(m.media);
+            s += "{\n";
+        }
 
-                css_block_into_string(if is_media { 1 } else { 0 }, merge_css_selector(block.selector), block.keyvals, &mut s);
-
-                if is_media {
-                    s += "}\n"
-                }
-
-            },
-            Err(e) => {
-                eprintln!("Warning: {:?}", e);
+        if m.fontfaces.len() > 0 {
+            for font in m.fontfaces {
+                match font {
+                    Ok(block) => {
+                        fontface_into_string(indent, block, &mut s);
+                    },
+                    Err(e) => {
+                        eprintln!("Warning: {:?}", e);
+                    }
+                };
             }
         }
-        handle.write_all(s.as_bytes());
+
+        for style in m.styles {
+            if style.selector.len() > 0 {
+                css_block_into_string(indent, merge_css_selector(style.selector), style.keyvals, &mut s);
+            } else if style.keyvals.len() > 0 {
+                eprintln!("Warning: can't have naked keyvals")
+            }
+        }
+
+        if is_media {
+            s += "}\n"
+        }
+
     }
 
+    handle.write_all(s.as_bytes());
+
+}
+
+fn fontface_into_string(indent_count: usize, block: FontFace, s: &mut String) {
+    let indent: String = (0..indent_count).map(|_| '\t').collect();
+
+    *s += &indent;
+    *s += "@font-face {\n";
+    css_keyvals_into_string(indent_count+1, block.keyvals, s);
+    *s += &indent;
+    *s += "}\n";
 }
 
 fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String,String)>, s: &mut String) {
@@ -107,6 +144,25 @@ struct CSS {
 }
 
 #[derive(Clone,PartialEq,Debug)]
+struct Media {
+    media: Vec<String>,
+    fontfaces: Vec<Result<FontFace,Error>>,
+    styles: Vec<Style>
+}
+impl Media {
+    fn with_query(q: Vec<String>) -> Self { Media{media: q, fontfaces: vec![], styles: vec![]} }
+}
+
+#[derive(Clone,PartialEq,Debug)]
+struct Style {
+    selector: Vec<String>,
+    keyvals: Vec<(String,String)>
+}
+impl Style {
+    fn with_selector(s: Vec<String>) -> Self { Style{selector: s, keyvals: vec![]} }
+}
+
+#[derive(Clone,PartialEq,Debug)]
 struct Keyframes {
     name: String,
     inner: Vec<KeyframesInner>
@@ -125,7 +181,8 @@ struct FontFace {
 
 #[derive(Clone,PartialEq,Debug)]
 struct Items {
-    css: Vec<Result<CSS,Error>>,
+    media: Vec<Media>,
+    fontfaces: Vec<Result<FontFace,Error>>,
     keyframes: Vec<Result<Keyframes,Error>>,
 }
 
@@ -133,8 +190,9 @@ impl Items {
 
     fn new() -> Items {
         Items {
+            media: vec![],
+            fontfaces: vec![],
             keyframes: vec![],
-            css: vec![]
         }
     }
 
@@ -151,6 +209,45 @@ impl Items {
 
         let mut fontfaces = vec![];
         let mut keyvals = vec![];
+
+        macro_rules! append_current{
+            () => {
+                if keyvals.len() > 0 || fontfaces.len() > 0 {
+
+                    // get media block to append things to:
+                    let mut media = if let Some(last_media) = self.media.pop() {
+                        if last_media.media == loc.media {
+                            last_media
+                        } else {
+                            let m = loc.media.clone();
+                            self.media.push(last_media);
+                            Media::with_query(m)
+                        }
+                    } else {
+                        Media::with_query(loc.media.clone())
+                    };
+
+                    // get style block to append things to:
+                    let mut style = if let Some(last_style) = media.styles.pop() {
+                        if last_style.selector == loc.selector {
+                            last_style
+                        } else {
+                            let s = loc.selector.clone();
+                            media.styles.push(last_style);
+                            Style::with_selector(s)
+                        }
+                    } else {
+                        Style::with_selector(loc.selector.clone())
+                    };
+
+                    media.fontfaces.append(&mut fontfaces);
+                    style.keyvals.append(&mut keyvals);
+                    if style.keyvals.len() > 0 { media.styles.push(style); }
+                    self.media.push(media);
+                }
+            }
+        };
+
         for entry in entries {
 
             match entry {
@@ -171,7 +268,9 @@ impl Items {
                         },
                         Block::FontFaceBlock(b) => {
 
-                            fontfaces.push(match handle_fontface(b) {
+                            let v = if loc.media.len() == 0 { &mut self.fontfaces } else { &mut fontfaces };
+
+                            v.push(match handle_fontface(b) {
                                 Err(e) => err!(block, e),
                                 Ok(v) => Ok(v)
                             });
@@ -179,39 +278,18 @@ impl Items {
                         },
                         Block::MediaBlock(b) => {
 
-                            if keyvals.len() > 0 || fontfaces.len() > 0 {
-                                self.css.push(Ok(CSS{
-                                    media: loc.media.clone(),
-                                    selector: loc.selector.clone(),
-                                    fontfaces: fontfaces,
-                                    keyvals: keyvals
-                                }));
-                                fontfaces = vec![];
-                                keyvals = vec![];
-                            }
-
-                            let new_loc = Loc {
+                            append_current!();
+                            let next_loc = Loc {
                                 media: { let mut m = loc.media.clone(); m.push(b.query); m },
                                 selector: loc.selector.clone()
                             };
-
-                            self.populate_from_entries(b.css, new_loc);
+                            self.populate_from_entries(b.css, next_loc);
 
                         },
                         Block::CSSBlock(b) => {
 
-                            if keyvals.len() > 0 || fontfaces.len() > 0 {
-                                self.css.push(Ok(CSS{
-                                    media: loc.media.clone(),
-                                    selector: loc.selector.clone(),
-                                    fontfaces: fontfaces,
-                                    keyvals: keyvals
-                                }));
-                                fontfaces = vec![];
-                                keyvals = vec![];
-                            }
-
-                            let new_loc = Loc {
+                            append_current!();
+                            let next_loc = Loc {
                                 media: loc.media.clone(),
                                 selector: {
                                     let mut s = loc.selector.clone();
@@ -219,25 +297,17 @@ impl Items {
                                     s
                                 }
                             };
-
-                            self.populate_from_entries(b.css, new_loc);
+                            self.populate_from_entries(b.css, next_loc);
 
                         }
                     }
-
-
                 }
             }
 
         };
-        if keyvals.len() > 0 || fontfaces.len() > 0 {
-            self.css.push(Ok(CSS{
-                media: loc.media,
-                selector: loc.selector,
-                fontfaces: fontfaces,
-                keyvals: keyvals
-            }));
-        }
+
+        append_current!();
+
 
     }
 
