@@ -47,14 +47,3 @@ This is a WIP for a CSS preprocessor that might allow you to write code a bit li
 ...to produce CSS. It aims to improve upon preprocessors like SCSS by offering a flexible, functional style of writing that avoids bad practises like the implicit presense of global variables without any sort of explicit importing of them.
 
 Still in progress and details subject to change!
-
-# Todo:
-
-- [ ] make error messages nicer
-- [ ] support colours as first class things
-- [x] allow eliding of opening and closing `{`/`}` in new file (just pretend we're inside a block when we start parsing)
-- [ ] cache imported files
-- [ ] prevent import loops
-- [x] no more `${}` in blocks (only in css key/val). Support `$var`, `$var.a`, `$var()`. May help avoid conflicts with css selectors, which only allow `${}`
-- [x] reduce reliance on semicolons. With the above, I suspect we won't need them for css block variable declarations or mixins, just for css values (allow them though)
-- [ ] support "//" comments (this might need a change in pest)
