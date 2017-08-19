@@ -1,7 +1,6 @@
 use types::*;
 use std::io::{self, Write};
 
-
 /// the only thing we expose from this:
 pub fn print_css(block: EvaluatedBlock) {
 
@@ -58,6 +57,7 @@ pub fn print_css(block: EvaluatedBlock) {
                 };
             }
         }
+
         if m.keyframes.len() > 0 {
             for keyframe in m.keyframes {
                 match keyframe {
@@ -70,7 +70,6 @@ pub fn print_css(block: EvaluatedBlock) {
                 }
             }
         }
-
 
         for style in m.styles {
             if style.selector.len() > 0 {
@@ -142,8 +141,28 @@ fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &m
 fn merge_media_query(query: Vec<String>) -> String {
     query.join(" and ")
 }
-fn merge_css_selector(selector: Vec<String>) -> String {
-    selector.join(" ")
+fn merge_css_selector(mut selector: Vec<String>) -> String {
+
+    selector.reverse();
+
+    let mut current = match selector.pop() {
+        Some(val) => val,
+        None => return String::new()
+    };
+
+    while let Some(next) = selector.pop() {
+
+        // replace and '&'s in a selector with the previous, if any exist.
+        // else, just append selectors separated by a space.
+        if next.contains('&') {
+            current = next.replace('&', &current);
+        } else {
+            current.push(' ');
+            current.push_str(&next);
+        }
+    }
+
+    current
 }
 
 #[derive(Clone,PartialEq,Debug)]

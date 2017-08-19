@@ -85,6 +85,15 @@
         margin: ${ $other.a + $other.b };
     }
 
+    // copied from css-tricks; works like SCSS:
+    .parent {
+        .child {
+            .grand-child & {
+                &.sibling { color: blue; }
+            }
+        }
+    }
+
 }
 
 @font-face {

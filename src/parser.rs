@@ -154,7 +154,7 @@ impl_rdp! {
         // allow block and "//" style comments
         comment = _{ block_comment | eol_comment }
             block_comment = _{ ["/*"] ~ (block_comment | ( !(block_comment | ["*/"]) ~ any))* ~ ["*/"] }
-            eol_comment = _{ ["//"] ~ (!n ~ any)* ~ n }
+            eol_comment = _{ ["//"] ~ (!["\n"] ~ any)* ~ ["\n"] }
 
     }
 
