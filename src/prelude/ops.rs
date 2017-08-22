@@ -138,7 +138,7 @@ pub fn not(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
     }
 
     let a = args.remove(0);
-    let b = casting::raw_boolean(a.expr)?;
+    let b = casting::raw_boolean(&a.expr)?;
 
     Ok(Expr::Prim(Bool(!b)))
 

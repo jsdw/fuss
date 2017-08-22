@@ -16,11 +16,11 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
 // turn a Token + Expr into an Expression:
 fn expression(rule: Token<Rule>, expr: Expr) -> Expression {
-    Expression{
-        start: Position(rule.start),
-        end: Position(rule.end),
-        expr: expr
-    }
+    Expression::with_position(
+        Position(rule.start),
+        Position(rule.end),
+        expr
+    )
 }
 
 // escape a string - allow \\ and \" in a string; resulting in \ and ".
@@ -209,7 +209,7 @@ impl_rdp! {
         _infix(&self) -> Expr {
             (left:_expression(), sign:_variable_expression(), right:_expression()) => {
                 Expr::App{
-                    expr: Box::new(sign),
+                    expr: sign,
                     args: vec![ left, right ]
                 }
             }
@@ -217,11 +217,11 @@ impl_rdp! {
         _variable_expression(&self) -> Expression {
             (sign) => {
                 let tok = self.input().slice(sign.start,sign.end);
-                Expression{
-                    start: Position(sign.start),
-                    end: Position(sign.end),
-                    expr: Expr::Var(tok.to_owned(), vec![])
-                }
+                Expression::with_position(
+                    Position(sign.start),
+                    Position(sign.end),
+                    Expr::Var(tok.to_owned(), vec![])
+                )
             }
         }
         _function(&self) -> Expr {
@@ -229,14 +229,14 @@ impl_rdp! {
                 let arg_vec = args.into_iter().collect::<Vec<String>>();
                 Expr::Func{
                     inputs: arg_vec,
-                    output: Box::new(expr),
+                    output: expr,
                     scope: Scope::new()
                 }
             },
             (_:function_expression, expr:_expression()) => {
                 Expr::Func{
                     inputs: vec![],
-                    output: Box::new(expr),
+                    output: expr,
                     scope: Scope::new()
                 }
             },
@@ -253,16 +253,16 @@ impl_rdp! {
         _if_then_else(&self) -> Expr {
             (cond: _expression(), then: _expression(), otherwise: _expression()) => {
                 Expr::If{
-                    cond: Box::new(cond),
-                    then: Box::new(then),
-                    otherwise: Box::new(otherwise)
+                    cond: cond,
+                    then: then,
+                    otherwise: otherwise
                 }
             }
         }
         _application(&self) -> Expr {
             (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
                 Expr::App{
-                    expr: Box::new(sign),
+                    expr: sign,
                     args: vec![arg]
                 }
             },
@@ -273,7 +273,7 @@ impl_rdp! {
         _function_application(&self) -> Expr {
             (_:function_application_fn, func:_expression(), args:_application_args()) => {
                 Expr::App{
-                    expr: Box::new(func),
+                    expr: func,
                     args: args.into_iter().collect::<Vec<Expression>>()
                 }
             }

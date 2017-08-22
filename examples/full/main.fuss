@@ -1,11 +1,16 @@
 @media some-media-thing {
 
+    $a: 12345;
+    $b: $a;
+    $c: $b;
+
     $other: $import("other")
     $hello: ($a) => $a + 2px
     $fn: ($a) => .hi { background-color: $a; }
     $block: {
         $a: .hello.there {
             color: red;
+            padding: ${ $c }px;
         }
         $b: .another.there {
             color: blue;

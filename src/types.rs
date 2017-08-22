@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use list::List;
 use std::path::PathBuf;
 use std::fmt;
+use std::ops::Deref;
+use std::rc::Rc;
 
 /// Primitive values:
 #[derive(PartialEq,Debug,Clone)]
@@ -109,13 +111,13 @@ pub enum Expr {
     /// A primitive function
     PrimFunc(PrimFunc),
     /// An if expression eg if this then 2px else 20%
-    If{ cond: Box<Expression>, then: Box<Expression>, otherwise: Box<Expression> },
+    If{ cond: Expression, then: Expression, otherwise: Expression },
     /// A function eg ($a, $b) => $a + $b
-    Func{ inputs: Vec<String>, output: Box<Expression>, scope: Scope },
+    Func{ inputs: Vec<String>, output: Expression, scope: Scope },
     /// A variable name or accessed variable eg $hello or $hello.there.thing
     Var(String, Vec<String>),
     /// Applying args to something (calling a function)
-    App{ expr: Box<Expression>, args: Vec<Expression> },
+    App{ expr: Expression, args: Vec<Expression> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
     Block(UnevaluatedBlock),
     /// An evaluated form of the above; this avoids needing to do some checks later:
@@ -125,10 +127,32 @@ pub enum Expr {
 /// An Expr paired with the start and end position
 /// of the underlying text:
 #[derive(Debug,Clone)]
-pub struct Expression {
+pub struct Expression( Rc<ExpressionInner> );
+
+#[derive(Debug,Clone)]
+pub struct ExpressionInner {
     pub start: Position,
     pub end: Position,
     pub expr: Expr
+}
+
+impl Deref for Expression {
+    type Target = ExpressionInner;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+impl Expression {
+    pub fn with_position(start: Position, end: Position, expr: Expr) -> Expression {
+        Expression(Rc::new(ExpressionInner{
+            start: start,
+            end: end,
+            expr: expr
+        }))
+    }
+    pub fn new(expr: Expr) -> Expression {
+        Expression::with_position(Position::new(), Position::new(), expr)
+    }
 }
 
 // this is so that we can compare expressions, ignoring

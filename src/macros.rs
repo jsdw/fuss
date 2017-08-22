@@ -24,13 +24,10 @@ macro_rules! naked_err {
 
 // build an expression based on another expression without borrowing too much from it.
 macro_rules! expression_from {
-    ($e:ident, $expr:expr) => (
-        Expression{
-            start: $e.start,
-            end: $e.end,
-            expr: $expr
-        }
-    )
+    ($e:ident, $expr:expr) => ({
+        use types::*;
+        Expression::with_position($e.start, $e.end, $expr)
+    })
 }
 
 /// make it a little easier to build up a scope of primitive functions
@@ -42,11 +39,9 @@ macro_rules! scope {
 
         let mut map = HashMap::new();
         $(
-            map.insert($key.to_owned(), Expression{
-                start: Position::new(),
-                end: Position::new(),
-                expr: Expr::PrimFunc(PrimFunc($func))
-            });
+            map.insert($key.to_owned(),
+                Expression::new(Expr::PrimFunc(PrimFunc($func)))
+            );
         )*
         Scope::from(map)
 
