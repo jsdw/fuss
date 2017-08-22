@@ -32,7 +32,7 @@ pub fn raw_string(e: Expr) -> Result<String,ErrorType> {
         Expr::Prim(Str(s)) => Ok(s),
         Expr::Prim(Bool(b)) => Ok(if b { "true".to_owned() } else { "false".to_owned() }),
         Expr::Prim(Unit(num,suffix)) => Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0').trim_right_matches('.'),suffix}),
-        _ => Err(ErrorType::InvalidExpressionInCssValue)
+        _ => Err(ErrorType::InvalidExpressionInCssValue(Box::new(e)))
     }
 }
 

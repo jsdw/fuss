@@ -236,7 +236,7 @@ pub enum ErrorType {
     NotACSSBlock,
     LoopDetected,
     PropertyDoesNotExist(String,String),
-    InvalidExpressionInCssValue,
+    InvalidExpressionInCssValue(Box<Expr>),
     UnitMismatch,
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
