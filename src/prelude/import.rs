@@ -7,14 +7,14 @@ use parser::parse;
 use std::path::PathBuf;
 
 /// cast an expression to a boolean as best we can
-pub fn import(mut args: Vec<Expression>, context: &Context) -> PrimRes {
+pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
     if args.len() > 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
 
     // expect a string input:
-    let a = args.remove(0);
-    let relpath = if let Expr::Prim(Str(relpath)) = a.expr {
+    let a = &args[0];
+    let relpath = if let Expr::Prim(Str(ref relpath)) = a.expr {
         Ok(relpath)
     } else {
         Err(ErrorType::WrongTypeOfArguments{ message: "import requires a path string".to_owned() })
@@ -72,7 +72,7 @@ fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
 
     // let res = parse(&input);
     let res = match parse(&file_contents) {
-        Ok(expr) => eval(expr, super::get_prelude(), &context).map_err(|mut e| {
+        Ok(expr) => eval(&expr, super::get_prelude(), &context).map_err(|mut e| {
             e.file = path.clone();
             e
         }),
@@ -84,9 +84,10 @@ fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
         })
     };
 
+
     // return either the Expr or an ImportError which wraps the import issue.
     res.map_err(|e| ErrorType::ImportError(Box::new(e)))
-        .map(|e| e.expr)
+       .map(|e| e.into_expr().expect("importing file: couldn't unwrap Rc"))
 
 }
 

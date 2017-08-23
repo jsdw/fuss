@@ -2,7 +2,7 @@
 
     $a: 12345;
     $b: $a;
-    $c: $b;
+    $c: 12345;
 
     $other: $import("other")
     $hello: ($a) => $a + 2px

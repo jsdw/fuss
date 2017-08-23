@@ -2,27 +2,25 @@ use types::*;
 use types::Primitive::*;
 
 /// cast an expression to a boolean as best we can
-pub fn boolean(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn boolean(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
 
-    let a = args.remove(0);
-    let raw = raw_boolean(&a.expr)?;
+    let raw = raw_boolean(&args[0].expr)?;
     Ok(Expr::Prim(Bool(raw)))
 
 }
 
 /// cast an expression to a string where possible
-pub fn string(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn string(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
 
-    let a = args.remove(0);
-    let raw = raw_string(&a.expr)?;
+    let raw = raw_string(&args[0].expr)?;
     Ok(Expr::Prim(Str(raw)))
 
 }

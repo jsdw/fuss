@@ -3,25 +3,22 @@ use types::Primitive::*;
 use prelude::casting;
 
 /// The "+" operator.
-pub fn add(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn add(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) => {
+    match (&args[0].expr, &args[1].expr) {
+        (&Expr::Prim(Unit(a, ref au)), &Expr::Prim(Unit(b, ref bu))) => {
 
             let unit = pick_unit(au,bu)?;
             Ok(Expr::Prim(Unit(a + b, unit)))
 
         },
-        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+        (&Expr::Prim(Str(ref a)), &Expr::Prim(Str(ref b))) => {
 
-            Ok(Expr::Prim(Str(a + &b)))
+            Ok(Expr::Prim(Str(a.to_owned() + b)))
 
         },
         _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be added together".to_owned() })
@@ -30,28 +27,23 @@ pub fn add(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// The "-" operator. Needs to handle unary minus or subtract.
-pub fn subtract(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn subtract(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     let len = args.len();
 
     if len == 1 {
 
-        /// unary negation
-        let a = args.remove(0);
+        let a = &args[0];
 
-        if let Expr::Prim(Unit(a, au)) = a.expr {
-            Ok(Expr::Prim(Unit(-a, au)))
+        if let Expr::Prim(Unit(a, ref au)) = a.expr {
+            Ok(Expr::Prim(Unit(-a, au.to_owned())))
         } else {
             Err(ErrorType::WrongTypeOfArguments{ message: "unary '-' can only be used on numbers".to_owned() })
         }
 
     } else if len == 2 {
 
-        /// subtracting
-        let b = args.remove(1);
-        let a = args.remove(0);
-
-        if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+        if let (&Expr::Prim(Unit(a, ref au)), &Expr::Prim(Unit(b, ref bu))) = (&args[0].expr,&args[1].expr) {
 
             let unit = pick_unit(au,bu)?;
             Ok(Expr::Prim(Unit(a - b, unit)))
@@ -68,16 +60,13 @@ pub fn subtract(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// The "/" operator
-pub fn divide(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn divide(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+    if let (&Expr::Prim(Unit(a, ref au)), &Expr::Prim(Unit(b, ref bu))) = (&args[0].expr,&args[1].expr) {
 
         let unit = pick_unit(au,bu)?;
         Ok(Expr::Prim(Unit(a / b, unit)))
@@ -89,16 +78,13 @@ pub fn divide(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// The "*" operator
-pub fn multiply(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn multiply(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+    if let (&Expr::Prim(Unit(a, ref au)), &Expr::Prim(Unit(b, ref bu))) = (&args[0].expr,&args[1].expr) {
 
         let unit = pick_unit(au,bu)?;
         Ok(Expr::Prim(Unit(a * b, unit)))
@@ -110,16 +96,13 @@ pub fn multiply(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// The "^" operator
-pub fn pow(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn pow(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    if let (Expr::Prim(Unit(a, au)), Expr::Prim(Unit(b, bu))) = (a.expr,b.expr) {
+    if let (&Expr::Prim(Unit(a, ref au)), &Expr::Prim(Unit(b, ref bu))) = (&args[0].expr,&args[1].expr) {
 
         let unit = pick_unit(au,bu)?;
         Ok(Expr::Prim(Unit(a.powf(b), unit)))
@@ -131,62 +114,52 @@ pub fn pow(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// The unary "!" operator
-pub fn not(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn not(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
 
-    let a = args.remove(0);
-    let b = casting::raw_boolean(&a.expr)?;
+    let b = casting::raw_boolean(&args[0].expr)?;
 
     Ok(Expr::Prim(Bool(!b)))
 
 }
 
 /// "=="
-pub fn equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn equal(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    Ok(Expr::Prim(Bool(a == b)))
+    Ok(Expr::Prim(Bool(args[0].expr == args[1].expr)))
 
 }
 
 /// "!="
-pub fn not_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn not_equal(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    Ok(Expr::Prim(Bool(a != b)))
+    Ok(Expr::Prim(Bool(args[0].expr != args[1].expr)))
 
 }
 
 /// ">"
-pub fn greater_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn greater_than(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
+    match (&args[0].expr, &args[1].expr) {
+        (&Expr::Prim(Unit(a, _)), &Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a > b)))
         },
-        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+        (&Expr::Prim(Str(ref a)), &Expr::Prim(Str(ref b))) => {
             Ok(Expr::Prim(Bool(a > b)))
         },
         _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '>'".to_owned() })
@@ -195,20 +168,17 @@ pub fn greater_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// ">="
-pub fn greater_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn greater_than_or_equal(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
+    match (&args[0].expr, &args[1].expr) {
+        (&Expr::Prim(Unit(a, _)), &Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a >= b)))
         },
-        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+        (&Expr::Prim(Str(ref a)), &Expr::Prim(Str(ref b))) => {
             Ok(Expr::Prim(Bool(a >= b)))
         },
         _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '>='".to_owned() })
@@ -217,20 +187,17 @@ pub fn greater_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> P
 }
 
 /// "<"
-pub fn less_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn less_than(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
+    match (&args[0].expr, &args[1].expr) {
+        (&Expr::Prim(Unit(a, _)), &Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a < b)))
         },
-        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+        (&Expr::Prim(Str(ref a)), &Expr::Prim(Str(ref b))) => {
             Ok(Expr::Prim(Bool(a < b)))
         },
         _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '<'".to_owned() })
@@ -239,20 +206,17 @@ pub fn less_than(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// "<="
-pub fn less_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn less_than_or_equal(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    match (a.expr, b.expr) {
-        (Expr::Prim(Unit(a, _)), Expr::Prim(Unit(b, _))) => {
+    match (&args[0].expr, &args[1].expr) {
+        (&Expr::Prim(Unit(a, _)), &Expr::Prim(Unit(b, _))) => {
             Ok(Expr::Prim(Bool(a <= b)))
         },
-        (Expr::Prim(Str(a)), Expr::Prim(Str(b))) => {
+        (&Expr::Prim(Str(ref a)), &Expr::Prim(Str(ref b))) => {
             Ok(Expr::Prim(Bool(a <= b)))
         },
         _ => Err(ErrorType::WrongTypeOfArguments{ message: "only numbers and strings can be compared with '<='".to_owned() })
@@ -261,16 +225,13 @@ pub fn less_than_or_equal(mut args: Vec<Expression>, _context: &Context) -> Prim
 }
 
 /// "&&"
-pub fn boolean_and(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn boolean_and(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    if let (Expr::Prim(Bool(a)), Expr::Prim(Bool(b))) = (a.expr,b.expr) {
+    if let (&Expr::Prim(Bool(a)), &Expr::Prim(Bool(b))) = (&args[0].expr,&args[1].expr) {
         Ok(Expr::Prim(Bool(a && b)))
     } else {
         Err(ErrorType::WrongTypeOfArguments{ message: "only booleans can be &&'d".to_owned() })
@@ -279,16 +240,13 @@ pub fn boolean_and(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 }
 
 /// "||"
-pub fn boolean_or(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn boolean_or(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     if args.len() != 2 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 2, got: args.len() });
     }
 
-    let b = args.remove(1);
-    let a = args.remove(0);
-
-    if let (Expr::Prim(Bool(a)), Expr::Prim(Bool(b))) = (a.expr,b.expr) {
+    if let (&Expr::Prim(Bool(a)), &Expr::Prim(Bool(b))) = (&args[0].expr,&args[1].expr) {
         Ok(Expr::Prim(Bool(a || b)))
     } else {
         Err(ErrorType::WrongTypeOfArguments{ message: "only booleans can be ||'d".to_owned() })
@@ -296,12 +254,12 @@ pub fn boolean_or(mut args: Vec<Expression>, _context: &Context) -> PrimRes {
 
 }
 
-fn pick_unit(au: String, bu: String) -> Result<String,ErrorType> {
+fn pick_unit(au: &str, bu: &str) -> Result<String,ErrorType> {
     if au.len() > 0 && bu.len() > 0 && au != bu {
         Err(ErrorType::UnitMismatch)
     } else if au.len() > 0 {
-        Ok(au)
+        Ok(au.to_owned())
     } else {
-        Ok(bu)
+        Ok(bu.to_owned())
     }
 }

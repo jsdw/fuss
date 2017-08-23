@@ -153,6 +153,12 @@ impl Expression {
     pub fn new(expr: Expr) -> Expression {
         Expression::with_position(Position::new(), Position::new(), expr)
     }
+    pub fn into_expr(self) -> Option<Expr> {
+        match Rc::try_unwrap(self.0) {
+            Ok(e) => Some(e.expr),
+            Err(_) => None
+        }
+    }
 }
 
 // this is so that we can compare expressions, ignoring
@@ -165,7 +171,7 @@ impl PartialEq for Expression {
 
 /// Wrap our primfuncs into a struct so that we can implement basic
 /// traits on them, since they can't be derived automatically.
-pub struct PrimFunc(pub fn(Vec<Expression>,&Context) -> PrimRes);
+pub struct PrimFunc(pub fn(&Vec<Expression>,&Context) -> PrimRes);
 impl Clone for PrimFunc {
     fn clone(&self) -> PrimFunc {
         PrimFunc(self.0)

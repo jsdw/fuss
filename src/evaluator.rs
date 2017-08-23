@@ -2,19 +2,19 @@ use types::*;
 use types::ErrorType::*;
 use std::collections::HashMap;
 
-pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
+pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
     match e.expr {
 
         /// We don't need to simplify primitives; they don't get any simpler!
-        Expr::Prim(_) => Ok(e),
+        Expr::Prim(_) => Ok(e.clone()),
 
         /// primitive functions are essentailly black boxes that we pass exprs into
         /// and get some result out; we can't simplify them.
-        Expr::PrimFunc(..) => Ok(e),
+        Expr::PrimFunc(..) => Ok(e.clone()),
 
         /// EvaluatedBlocks have already been evaluated, so no need to do more:
-        Expr::EvaluatedBlock(..) => Ok(e),
+        Expr::EvaluatedBlock(..) => Ok(e.clone()),
 
         /// Variables: replace these with the Expresssion on scope that the
         /// variable points to. Assume anything on scope is already simplified
@@ -59,9 +59,9 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
         },
 
         /// If simplifies based on the boolean-ness of the condition!
-        Expr::If{ cond: ref cond, then: ref then_e, otherwise: ref else_e } => {
+        Expr::If{ ref cond, then: ref then_e, otherwise: ref else_e } => {
 
-            let cond = eval(cond.clone(), scope.clone(), context)?;
+            let cond = eval(cond, scope.clone(), context)?;
 
             use prelude::casting::raw_boolean;
             let is_true = match raw_boolean(&cond.expr){
@@ -70,9 +70,9 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
             }?;
 
             if is_true {
-                eval(then_e.clone(), scope, context)
+                eval(then_e, scope, context)
             } else {
-                eval(else_e.clone(), scope, context)
+                eval(else_e, scope, context)
             }
         },
 
@@ -93,14 +93,14 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
 
         /// Function applications lead to a new scope being created to stick the
         /// function inputs into, and then simplifying the body against that.
-        Expr::App{ expr: ref expr, ref args } => {
+        Expr::App{ ref expr, ref args } => {
 
             // simplify the func expr, which might at this point be a variable
             // or something. Then, simplify the args.
-            let func = eval(expr.clone(), scope.clone(), context)?;
+            let func = eval(expr, scope.clone(), context)?;
             let mut simplified_args = Vec::with_capacity(args.len());
             for arg in args.into_iter() {
-                let simplified_arg = eval(arg.clone(), scope.clone(), context)?;
+                let simplified_arg = eval(arg, scope.clone(), context)?;
                 simplified_args.push(simplified_arg);
             }
 
@@ -123,13 +123,13 @@ pub fn eval(e: Expression, scope: Scope, context: &Context) -> Res {
                         function_scope.insert(name.to_owned(),arg);
                     }
 
-                    eval(func_e.clone(), scope.push(function_scope), context)
+                    eval(func_e, scope.push(function_scope), context)
 
                 },
                 Expr::PrimFunc(ref func) => {
 
                     // primitive func? just run it on the args then!
-                    match func.0(simplified_args, context) {
+                    match func.0(&simplified_args, context) {
                         Ok(res) => Ok(expression_from!{e, res}),
                         Err(err) => err!{e, err}
                     }
@@ -208,7 +208,7 @@ fn simplify_block_scope(block_scope: &HashMap<String,Expression>, scope: &Scope,
     let mut simplified_block_scope = HashMap::new();
     for (name,expr) in block_scope {
         let s = new_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(Primitive::RecursiveValue) });
-        let simplified_expr = eval(expr.clone(),s,context)?;
+        let simplified_expr = eval(expr,s,context)?;
         simplified_block_scope.insert(name.to_owned(), simplified_expr);
     }
     Ok(simplified_block_scope)
@@ -219,7 +219,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
         match *bit {
             CSSBit::Str(ref s) => string.push(s.to_owned()),
             CSSBit::Expr(ref e) => {
-                let e = eval(e.clone(), scope.clone(),context)?;
+                let e = eval(e, scope.clone(),context)?;
                 use prelude::casting::raw_string;
                 let s = match raw_string(&e.expr) {
                     Ok(s) => Ok(s),
@@ -236,9 +236,9 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
     for val in entries {
         match *val {
             CSSEntry::Expr(ref expr) => {
-                let css_expr = eval(expr.clone(), scope.clone(),context)?;
+                let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
-                    Expr::EvaluatedBlock(block) => out.push(EvaluatedCSSEntry::Block(block)),
+                    Expr::EvaluatedBlock(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
                     _ => return err!(css_expr, NotACSSBlock)
                 };
             },

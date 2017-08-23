@@ -443,11 +443,11 @@ mod test {
     }
 
     fn e(e: Expr) -> Expression {
-        Expression{start:Position::new(), end:Position::new(), expr:e}
+        Expression::with_position(Position::new(), Position::new(), e)
     }
 
-    fn var(name: &str) -> Box<Expression> {
-        Box::new(e(Expr::Var(s(name),vec![])))
+    fn var(name: &str) -> Expression {
+        e(Expr::Var(s(name),vec![]))
     }
 
     // make defining hash maps a little easier:
@@ -686,13 +686,13 @@ mod test {
         "($apPl_3s, $b2ananA) => true" =>
             e(Expr::Func{
                 inputs: vec![s("apPl_3s"),s("b2ananA")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(true)))),
+                output: e(Expr::Prim(Primitive::Bool(true))),
                 scope: Scope::new()
             });
         "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
             e(Expr::Func{
                 inputs: vec![s("a"),s("b")],
-                output: Box::new(e(Expr::Prim(Primitive::Bool(false)))),
+                output: e(Expr::Prim(Primitive::Bool(false))),
                 scope: Scope::new()
             });
     }
@@ -769,7 +769,7 @@ mod test {
             });
         "$hello.there($a)" =>
             e(Expr::App{
-                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                expr: e(Expr::Var(s("hello"),vec![s("there")])),
                 args: vec![ e(Expr::Var(s("a"),vec![])) ]
             });
         "!$hello.there($a)" =>
@@ -777,7 +777,7 @@ mod test {
                 expr: var("!"),
                 args: vec![
                     e(Expr::App{
-                        expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                        expr: e(Expr::Var(s("hello"),vec![s("there")])),
                         args: vec![ e(Expr::Var(s("a"),vec![])) ]
                     })
                 ]
@@ -790,7 +790,7 @@ mod test {
                         expr: var("!"),
                         args: vec![
                             e(Expr::App{
-                                expr: Box::new(e(Expr::Var(s("hello"),vec![s("there")]))),
+                                expr: e(Expr::Var(s("hello"),vec![s("there")])),
                                 args: vec![ e(Expr::Var(s("a"),vec![])) ]
                             })
                         ]
@@ -852,7 +852,7 @@ mod test {
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
                         scope: Scope::new(),
-                        output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                        output: e(Expr::Prim(Primitive::Bool(true)))
                     })
                 ],
                 css: vec![]
@@ -891,7 +891,7 @@ mod test {
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
                         scope: Scope::new(),
-                        output: Box::new(e(Expr::Prim(Primitive::Bool(true))))
+                        output: e(Expr::Prim(Primitive::Bool(true)))
                     })
                 ],
                 css: vec![
