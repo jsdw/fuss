@@ -11,6 +11,9 @@ pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
     if args.len() > 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
+    if !context.path.is_file() || !context.root.is_file() {
+        return Err(ErrorType::CannotImportNoPathSet);
+    }
 
     // expect a string input:
     let a = &args[0];
@@ -53,7 +56,6 @@ fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
         return Err(ErrorType::CannotOpenFile(path.clone()));
     }
 
-    let mut file_contents = String::new();
     let mut file = File::open(&path).or_else(|_| {
         //failed to open; try again setting extension to .fuss
         let mut filename = path.file_name().unwrap().to_owned();
@@ -62,16 +64,21 @@ fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
         File::open(&new_path)
     }).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
 
+    let mut file_contents = String::new();
     file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(path.clone()))?;
+    import_path_with_string(path, root, file_contents)
 
-    // try to parse and eval the contents:
+}
+
+fn import_path_with_string(path: &PathBuf, root: &PathBuf, contents: String) -> PrimRes {
+
     let context = Context{
         path: path.clone(),
         root: root.clone()
     };
 
     // let res = parse(&input);
-    let res = match parse(&file_contents) {
+    let res = match parse(&contents) {
         Ok(expr) => eval(&expr, super::get_prelude(), &context).map_err(|mut e| {
             e.file = path.clone();
             e
@@ -84,13 +91,18 @@ fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
         })
     };
 
-
     // return either the Expr or an ImportError which wraps the import issue.
     res.map_err(|e| ErrorType::ImportError(Box::new(e)))
        .map(|e| e.into_expr().expect("importing file: couldn't unwrap Rc"))
-
 }
 
+/// use this to eval a string into fuss; useful for interactive stuff but
+/// can't import files if we didn't start with an actual filepath.
+pub fn import_string(file: String) -> PrimRes {
+    import_path_with_string(&PathBuf::new(), &PathBuf::new(), file)
+}
+
+/// our standard import mechanism, to get us going.
 pub fn import_root(path: &PathBuf) -> PrimRes {
     import_path(path, path)
 }

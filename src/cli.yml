@@ -6,5 +6,5 @@ args:
     - input:
         short: i
         help: The root FUSS file to compile
-        required: true
+        required: false
         takes_value: true

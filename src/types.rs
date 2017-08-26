@@ -270,6 +270,8 @@ pub enum ErrorType {
     UnitMismatch,
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
+    CannotImportNoPathSet,
+
     ImportError(Box<Error>),
     CycleDetected(Vec<String>),
 
