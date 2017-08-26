@@ -1,8 +1,8 @@
 @media some-media-thing {
 
-    $a: 12345;
+    $a: { $c: ($a) => $a + 100px; $b: $c(2px); };
     $b: $a;
-    $c: 12345;
+    $c: $a.b;
 
     $other: $import("other")
     $hello: ($a) => $a + 2px
@@ -10,7 +10,7 @@
     $block: {
         $a: .hello.there {
             color: red;
-            padding: ${ $c }px;
+            padding: $c;
         }
         $b: .another.there {
             color: blue;

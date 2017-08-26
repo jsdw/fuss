@@ -1,6 +1,7 @@
 use types::*;
 use types::ErrorType::*;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
@@ -203,15 +204,145 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
 }
 
-fn simplify_block_scope(block_scope: &HashMap<String,Expression>, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
-    let new_scope = scope.push(block_scope.clone());
-    let mut simplified_block_scope = HashMap::new();
-    for (name,expr) in block_scope {
-        let s = new_scope.push_one(name.clone(), expression_from!{ expr, Expr::Prim(Primitive::RecursiveValue) });
-        let simplified_expr = eval(expr,s,context)?;
-        simplified_block_scope.insert(name.to_owned(), simplified_expr);
+/// Scan through an expression, searching for variables provided in `search`, and adding any found
+/// to `out`. Anything that introduces variables (function declaration and blocks) removes those from
+/// search (since they shadow the names we actually care about finding).
+fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
+
+    fn get_dependencies_of(e: &Expression, search: &HashSet<String>, out: &mut HashSet<String>) {
+        match e.expr {
+            Expr::Prim(..) => {},
+            Expr::PrimFunc(..) => {},
+            Expr::If{ ref cond, ref then, ref otherwise } => {
+                get_dependencies_of(cond, search, out);
+                get_dependencies_of(then, search, out);
+                get_dependencies_of(otherwise, search, out);
+            },
+            Expr::Func{ ref inputs, ref output, .. } => {
+                let mut search = search.clone();
+                for i in inputs { search.remove(i); }
+                get_dependencies_of(output, &search, out);
+            },
+            Expr::Var(ref name,..) => {
+                if search.contains(name) {
+                    out.insert(name.clone());
+                }
+            },
+            Expr::App{ ref expr, ref args } => {
+                for arg in args {
+                    get_dependencies_of(arg, search, out);
+                }
+                get_dependencies_of(expr, search, out);
+            },
+            Expr::Block(ref block) => {
+                let mut search = search.clone();
+                match *block {
+                    Block::KeyframesBlock(ref b) => {
+                        let search = get_dependencies_of_scope(&b.scope, &search, out);
+                        get_dependencies_of_cssbits(&b.name, &search, out);
+                        get_dependencies_of_cssentries(&b.inner, &search, out);
+                    },
+                    Block::MediaBlock(ref b) => {
+                        let search = get_dependencies_of_scope(&b.scope, &search, out);
+                        get_dependencies_of_cssbits(&b.query, &search, out);
+                        get_dependencies_of_cssentries(&b.css, &search, out);
+                    },
+                    Block::FontFaceBlock(ref b) => {
+                        let search = get_dependencies_of_scope(&b.scope, &search, out);
+                        get_dependencies_of_cssentries(&b.css, &search, out);
+                    },
+                    Block::CSSBlock(ref b) => {
+                        let search = get_dependencies_of_scope(&b.scope, &search, out);
+                        get_dependencies_of_cssbits(&b.selector, &search, out);
+                        get_dependencies_of_cssentries(&b.css, &search, out);
+                    },
+                }
+            },
+            Expr::EvaluatedBlock(..) => {}
+        };
     }
-    Ok(simplified_block_scope)
+    fn get_dependencies_of_scope(scope: &HashMap<String,Expression>, search: &HashSet<String>, out: &mut HashSet<String>) -> HashSet<String> {
+        let mut search = search.clone();
+        for k in scope.keys() {
+            search.remove(k);
+        }
+        for e in scope.values() {
+            get_dependencies_of(e, &search, out);
+        }
+        search
+    }
+    fn get_dependencies_of_cssbits(bits: &Vec<CSSBit>, search: &HashSet<String>, out: &mut HashSet<String>) {
+        for bit in bits {
+            if let &CSSBit::Expr(ref e) = bit {
+                get_dependencies_of(e, &search, out);
+            }
+        }
+    }
+    fn get_dependencies_of_cssentries(entries: &Vec<CSSEntry>, search: &HashSet<String>, out: &mut HashSet<String>) {
+        for entry in entries {
+            match *entry {
+                CSSEntry::Expr(ref e) => {
+                    get_dependencies_of(e, search, out);
+                },
+                CSSEntry::KeyVal{ ref key, ref val } => {
+                    get_dependencies_of_cssbits(key, search, out);
+                    get_dependencies_of_cssbits(val, search, out);
+                }
+            }
+        }
+    }
+
+    let mut out = HashSet::new();
+    get_dependencies_of(e, search, &mut out);
+    out
+
+}
+
+/// Given a map of dependencies (var name -> Expression + var deps), return a map of evaluated expressions,
+/// or if a cycle is detected which prevents proper evaluation, an error.
+type Dependencies<'a> = HashMap<String,(&'a Expression,HashSet<String>)>;
+fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
+
+    fn do_simplify(key: &String, last: &Vec<String>, deps: &Dependencies, scope: &Scope, context: &Context, out: &mut HashMap<String,Expression>) -> Result<(),Error> {
+
+        if out.contains_key(key) { return Ok(()); }
+
+        let &(expr,ref expr_deps) = deps.get(key).expect("Trying to simplify an expression but can't find it on scope");
+
+        if last.iter().any(|k| k == key) { return err!(expr,ErrorType::CycleDetected(last.clone())); }
+
+        if expr_deps.len() > 0 {
+            let mut new_last = last.clone();
+            new_last.push(key.clone());
+            for dep in expr_deps {
+                do_simplify(dep, &new_last, deps, scope, context, out)?;
+            }
+        }
+
+        let new_scope = scope.push(out.clone());
+        let new_expr = eval(expr, new_scope, context)?;
+        out.insert(key.clone(), new_expr);
+        Ok(())
+
+    };
+
+    let mut out = HashMap::new();
+    let mut last = Vec::new();
+    for (key,&(expr,_)) in deps {
+        do_simplify(key, &last, deps, scope, context, &mut out)?;
+    }
+    Ok(out)
+
+}
+
+fn simplify_block_scope(block_scope: &HashMap<String,Expression>, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
+
+    // work out what each variable on scope depends on, so that we know which order to simplify them in in order
+    // to ensure that each variable has in its scope a simplified version of everything it depends on.
+    let vars: HashSet<String> = block_scope.keys().cloned().collect();
+    let deps: Dependencies = block_scope.iter().map(|(k,v)| (k.clone(),(v,dependencies(v, &vars)))).collect();
+
+    simplify_dependencies(&deps, scope, context)
 }
 fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -> Result<String,Error> {
     let mut string = vec![];

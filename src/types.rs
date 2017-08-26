@@ -271,6 +271,7 @@ pub enum ErrorType {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportError(Box<Error>),
+    CycleDetected(Vec<String>),
 
     // outputter errors:
     Keyframes_KeyvalsNotAllowedAtTop,
