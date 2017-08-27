@@ -94,12 +94,12 @@ impl_rdp! {
                 block_variable_assign = @{ variable ~ [":"] }
 
             block_css = { block_css_key ~ [":"] ~n~ block_css_value ~ END }
-            block_selector = { ( block_interpolated_expression | block_selector_chars )* }
+            block_selector = @{ ( block_interpolated_expression | block_selector_chars )* }
                 block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
 
-            block_css_key = { (block_interpolated_expression | block_css_key_chars)+ }
+            block_css_key = @{ (block_interpolated_expression | block_css_key_chars)+ }
                 block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
-            block_css_value = { (block_interpolated_expression | variable | block_css_value_chars)+ }
+            block_css_value = @{ (block_interpolated_expression | variable | block_css_value_chars)+ }
                 block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"] | ["}"]) ~ any )+ }
 
         // covers not-infix function application eg !$a, and $a($b,$c):
@@ -344,7 +344,7 @@ impl_rdp! {
         }
         _block_selector(&self) -> LinkedList<CSSBit> {
             (&chars:block_selector_chars, mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
                 tail
             },
             (_:block_interpolated_expression, expr:_expression(), mut tail: _block_selector()) => {
@@ -423,7 +423,7 @@ impl_rdp! {
                 tail
             },
             (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
                 tail
             },
             () => {
@@ -826,7 +826,7 @@ mod test {
             /* empty */
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![],
                 css: vec![]
             })));
@@ -834,10 +834,26 @@ mod test {
 
     process_test!{test_block_e;
         ".some-class {
+            hi: $a px;
+        }" =>
+            e(Expr::Block(Block::CSSBlock(CSSBlock{
+                selector: vec![CSSBit::Str(s(".some-class "))],
+                scope: hash_map![],
+                css: vec![
+                    CSSEntry::KeyVal{
+                        key: vec![CSSBit::Str(s("hi"))],
+                        val: vec![
+                            CSSBit::Expr(var("a")),
+                            CSSBit::Str(s(" px"))
+                        ]
+                    },
+                ]
+            })));
+        ".some-class {
             $hello: 2px;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
                 ],
@@ -847,7 +863,7 @@ mod test {
             $hello: ($a, $b) => true;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
@@ -861,7 +877,7 @@ mod test {
             $hello: { };
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Block(Block::CSSBlock(CSSBlock{
                         selector: vec![],
@@ -875,7 +891,7 @@ mod test {
             $hello;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![],
                 css: vec![
                     CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
@@ -886,7 +902,7 @@ mod test {
             $hello;
         }" =>
             e(Expr::Block(Block::CSSBlock(CSSBlock{
-                selector: vec![CSSBit::Str(s(".some-class"))],
+                selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
@@ -931,7 +947,7 @@ mod test {
                 css: vec![
                     CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
-                        selector: vec![CSSBit::Str(s(".hello"))],
+                        selector: vec![CSSBit::Str(s(".hello "))],
                         css: vec![
                             CSSEntry::KeyVal{
                                 key: vec![CSSBit::Str(s("a"))],
@@ -941,7 +957,7 @@ mod test {
                     })))),
                     CSSEntry::Expr(e(Expr::Block(Block::CSSBlock(CSSBlock{
                         scope: hash_map![],
-                        selector: vec![CSSBit::Str(s(".another"))],
+                        selector: vec![CSSBit::Str(s(".another "))],
                         css: vec![
                             CSSEntry::KeyVal{
                                 key: vec![CSSBit::Str(s("b"))],

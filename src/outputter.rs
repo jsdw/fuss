@@ -119,7 +119,7 @@ fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String
     let indent: String = (0..indent_count).map(|_| '\t').collect();
 
     *s += &indent;
-    *s += &selector;
+    *s += selector.trim();
     *s += " {\n";
     css_keyvals_into_string(indent_count+1, css, s);
     *s += &indent;
@@ -131,9 +131,9 @@ fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &m
 
     for (key,val) in css {
         *s += &indent;
-        *s += &key;
+        *s += key.trim();
         *s += ": ";
-        *s += &val;
+        *s += val.trim();
         *s += ";\n";
     }
 }
