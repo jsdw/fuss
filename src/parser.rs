@@ -89,7 +89,7 @@ impl_rdp! {
             block_close = { ["}"] }
 
             block_expression = { (function_application | variable_accessor | block) ~ END }
-            block_interpolated_expression = { ["${"] ~n~ expression ~n~ ["}"] }
+            block_interpolated_expression = !@{ ["${"] ~n~ expression ~n~ ["}"] }
             block_assignment = { block_variable_assign ~n~ expression ~ END }
                 block_variable_assign = @{ variable ~ [":"] }
 
@@ -804,6 +804,7 @@ mod test {
         "hello: there;" => block_css[];
         "${ $hello }: there;" => block_css[];
         "${ $hello }: the${ 2px }re;" => block_css[];
+        "${ $hello }: the${ 2px * 2 }re;" => block_css[];
     }
 
     parse_test!{test_block_assignment;
