@@ -313,7 +313,7 @@ impl Items {
 
                             append_current!();
                             let next_loc = Loc {
-                                media: { let mut m = loc.media.clone(); m.push(b.query); m },
+                                media: { let mut m = loc.media.clone(); m.push(b.query.trim().to_owned()); m },
                                 selector: loc.selector.clone()
                             };
                             self.populate_from_entries(b.css, next_loc);
@@ -326,7 +326,8 @@ impl Items {
                                 media: loc.media.clone(),
                                 selector: {
                                     let mut s = loc.selector.clone();
-                                    if b.selector.len() > 0 { s.push(b.selector); }
+                                    let trimmed = b.selector.trim();
+                                    if trimmed.len() > 0 { s.push(trimmed.to_owned()); }
                                     s
                                 }
                             };
@@ -378,7 +379,7 @@ fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Result<Keyframes,ErrorTyp
                             }
                         }
                         inner.push(KeyframesInner{
-                            selector: b.selector,
+                            selector: b.selector.trim().to_owned(),
                             keyvals: keyvals
                         });
                     }
@@ -388,7 +389,7 @@ fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Result<Keyframes,ErrorTyp
     }
 
     Ok(Keyframes{
-        name: block.name,
+        name: block.name.trim().to_owned(),
         inner: inner
     })
 
