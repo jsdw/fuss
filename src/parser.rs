@@ -60,12 +60,12 @@ impl_rdp! {
         // different types of expression, plus infix ops in reverse precedence order:
         expression = {
             { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
-            infix0 = { infix0_op }
-            infix1 = { infix1_op }
-            infix2 = { infix2_op }
-            infix3 = { infix3_op }
-            infix4 = { infix4_op }
-            infix5 = {< infix5_op }
+            infix0 = { n~ infix0_op ~n }
+            infix1 = { n~ infix1_op ~n }
+            infix2 = { n~ infix2_op ~n }
+            infix3 = { n~ infix3_op ~n }
+            infix4 = { n~ infix4_op ~n }
+            infix5 = {< n~ infix5_op ~n }
         }
 
         // all of our allowed infix ops:
@@ -782,7 +782,9 @@ mod test {
                     })
                 ]
             });
-        "!$hello.there($a) + 2px" =>
+        "!$hello.there($a)
+        +
+        2px" =>
             e(Expr::App{
                 expr: var("+"),
                 args: vec![
@@ -805,6 +807,9 @@ mod test {
         "${ $hello }: there;" => block_css[];
         "${ $hello }: the${ 2px }re;" => block_css[];
         "${ $hello }: the${ 2px * 2 }re;" => block_css[];
+        "hello: the${ 2px
+             *
+        2 }re;" => block_css[];
     }
 
     parse_test!{test_block_assignment;
