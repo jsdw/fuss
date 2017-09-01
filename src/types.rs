@@ -10,10 +10,7 @@ use std::rc::Rc;
 pub enum Primitive {
     Str(String),
     Bool(bool),
-    Unit(f64, String),
-    // This comes up when simplifying if we try to
-    // simply an expression defined in terms of itself somehow:
-    RecursiveValue
+    Unit(f64, String)
 }
 
 /// The possible things that can crop up in a CSS block
@@ -114,14 +111,20 @@ pub enum Expr {
     If{ cond: Expression, then: Expression, otherwise: Expression },
     /// A function eg ($a, $b) => $a + $b
     Func{ inputs: Vec<String>, output: Expression, scope: Scope },
-    /// A variable name or accessed variable eg $hello or $hello.there.thing
-    Var(String, Vec<String>),
-    /// Applying args to something (calling a function)
-    App{ expr: Expression, args: Vec<Expression> },
+    /// A variable name eg $hello
+    Var(String),
+    /// An expression that's being accessed
+    Accessed{ expression: Expression, access: Vec<Accessor> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }
     Block(UnevaluatedBlock),
     /// An evaluated form of the above; this avoids needing to do some checks later:
     EvaluatedBlock(EvaluatedBlock)
+}
+
+#[derive(PartialEq,Debug,Clone)]
+pub enum Accessor {
+    Property{ name: String },
+    Function{ args: Vec<Expression> }
 }
 
 /// An Expr paired with the start and end position
@@ -265,7 +268,7 @@ pub enum ErrorType {
     WrongTypeOfArguments{message: String},
     NotACSSBlock,
     LoopDetected,
-    PropertyDoesNotExist(String,String),
+    PropertyDoesNotExist(String),
     InvalidExpressionInCssValue(Box<Expr>),
     UnitMismatch,
     CannotOpenFile(PathBuf),

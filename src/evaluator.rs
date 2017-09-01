@@ -21,41 +21,12 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
         /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(ref name, ref rest) => {
+        Expr::Var(ref name) => {
 
-            // locate the initial variable on scope somewhere:
-            let mut var = scope.find(name).map_or(
+            scope.find(name).map_or(
                 err!(e,CantFindVariable(name.clone())),
-                |var| {
-                    // We found a var but it is a RecursiveValue, meaning we are trying
-                    // to define a value in terms of itself.
-                    if let Expr::Prim(Primitive::RecursiveValue) = var.expr {
-                        err!(var, LoopDetected)
-                    } else {
-                        Ok(var)
-                    }
-                }
-            )?;
-
-            // if asked to, try and dig into the variable, failing
-            // as soon as we don't have a scope to dig into any more.
-            for key in rest {
-                if let Expr::EvaluatedBlock(ref b) = var.expr {
-                    match b.block.scope().and_then(|s| s.get(key)) {
-                        Some(val) => {
-                            var = val;
-                        },
-                        None => {
-                            return err!(e, PropertyDoesNotExist(name.clone(), key.to_owned()));
-                        }
-                    }
-                } else {
-                    return err!(e, PropertyDoesNotExist(name.clone(), key.to_owned()));
-                }
-            }
-
-            // if we have found something from our digging, copy and return it:
-            Ok(var.clone())
+                |var| { Ok(var.clone()) }
+            )
 
         },
 
@@ -92,54 +63,78 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
         },
 
-        /// Function applications lead to a new scope being created to stick the
-        /// function inputs into, and then simplifying the body against that.
-        Expr::App{ ref expr, ref args } => {
+        /// Access in the form of property access like $a.hello, or function application like $a(2,4)
+        /// access can be chained.
+        Expr::Accessed{ ref expression, ref access } => {
 
-            // simplify the func expr, which might at this point be a variable
-            // or something. Then, simplify the args.
-            let func = eval(expr, scope.clone(), context)?;
-            let mut simplified_args = Vec::with_capacity(args.len());
-            for arg in args.into_iter() {
-                let simplified_arg = eval(arg, scope.clone(), context)?;
-                simplified_args.push(simplified_arg);
-            }
+            let mut curr: Expression = eval(expression, scope.clone(), context)?;
 
-            // now we've simplified the args and the func, see what type of
-            // func we are dealing with so that we can apply the args to it
-            // and get back a result.
-            match func.expr {
-                Expr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
+            for arg in access {
+                match *arg {
 
-                    if arg_names.len() != simplified_args.len() {
-                        return err!(e,WrongNumberOfArguments{
-                            expected: arg_names.len(),
-                            got: simplified_args.len()
-                        });
-                    }
+                    Accessor::Property{ ref name } => {
 
-                    // create scope containing simplified args to make use of in function body expr:
-                    let mut function_scope = HashMap::new();
-                    for (name, arg) in arg_names.into_iter().zip(simplified_args) {
-                        function_scope.insert(name.to_owned(),arg);
-                    }
+                        if let Expr::EvaluatedBlock(ref b) = curr.clone().expr {
+                            match b.block.scope().and_then(|s| s.get(name)) {
+                                Some(val) => {
+                                    curr = val.clone();
+                                },
+                                None => {
+                                    return err!(e, PropertyDoesNotExist(name.to_owned()));
+                                }
+                            }
+                        } else {
+                            return err!(e, PropertyDoesNotExist(name.to_owned()));
+                        };
 
-                    eval(func_e, scope.push(function_scope), context)
+                    },
+                    Accessor::Function{ ref args } => {
 
-                },
-                Expr::PrimFunc(ref func) => {
+                        let mut simplified_args = Vec::with_capacity(args.len());
+                        for arg in args.into_iter() {
+                            let simplified_arg = eval(arg, scope.clone(), context)?;
+                            simplified_args.push(simplified_arg);
+                        }
 
-                    // primitive func? just run it on the args then!
-                    match func.0(&simplified_args, context) {
-                        Ok(res) => Ok(expression_from!{e, res}),
-                        Err(err) => err!{e, err}
+                        match curr.clone().expr {
+                            Expr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
+
+                                if arg_names.len() != simplified_args.len() {
+                                    return err!(e,WrongNumberOfArguments{
+                                        expected: arg_names.len(),
+                                        got: simplified_args.len()
+                                    });
+                                }
+
+                                // create scope containing simplified args to make use of in function body expr:
+                                let mut function_scope = HashMap::new();
+                                for (name, arg) in arg_names.into_iter().zip(simplified_args) {
+                                    function_scope.insert(name.to_owned(),arg);
+                                }
+
+                                // update our current expr to be the evaluated result:
+                                curr = eval(func_e, scope.push(function_scope), context)?;
+
+                            },
+                            Expr::PrimFunc(ref func) => {
+
+                                // primitive func? just run it on the args then!
+                                curr = match func.0(&simplified_args, context) {
+                                    Ok(res) => Ok(expression_from!{e, res}),
+                                    Err(err) => err!{e, err}
+                                }?;
+
+                            }
+                            _ => {
+                                return err!(e, NotAFunction);
+                            }
+                        }
                     }
 
                 }
-                _ => {
-                    err!(func, NotAFunction)
-                }
             }
+
+            Ok(curr)
 
         },
 
@@ -228,11 +223,15 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                     out.insert(name.clone());
                 }
             },
-            Expr::App{ ref expr, ref args } => {
-                for arg in args {
-                    get_dependencies_of(arg, search, out);
+            Expr::Accessed{ ref expression, ref access } => {
+                for accessor in access {
+                    if let Accessor::Function{ref args} = *accessor {
+                        for arg in args {
+                            get_dependencies_of(arg, search, out);
+                        }
+                    }
                 }
-                get_dependencies_of(expr, search, out);
+                get_dependencies_of(expression, search, out);
             },
             Expr::Block(ref block) => {
                 let mut search = search.clone();

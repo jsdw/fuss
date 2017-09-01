@@ -59,7 +59,7 @@ impl_rdp! {
 
         // different types of expression, plus infix ops in reverse precedence order:
         expression = {
-            { string | if_then_else | function | boolean | unit | application | paren_expression | variable_accessor | block }
+            { primitive | if_then_else | function | prefix_application | accessible | block }
             infix0 = { n~ infix0_op ~n }
             infix1 = { n~ infix1_op ~n }
             infix2 = { n~ infix2_op ~n }
@@ -68,6 +68,8 @@ impl_rdp! {
             infix5 = {< n~ infix5_op ~n }
         }
 
+        primitive = _{ string | boolean | unit }
+
         // all of our allowed infix ops:
         infix0_op = { ["||"] }
         infix1_op = { ["&&"] }
@@ -75,6 +77,23 @@ impl_rdp! {
         infix3_op = { ["+"] | ["-"] }
         infix4_op = { ["*"] | ["/"] }
         infix5_op = { ["^"] }
+
+        // anything that can be accessed; look for trailing access stuff when parsing it; either .prop or (args)
+        // strict on spaces to prevent collision with css selectors like .hello.there on new lines
+        accessible = @{ (paren_expression | variable) ~ access? }
+            access = @{ (property_access | function_access)+ }
+                property_access = @{ ["."] ~ variable_name }
+                function_access = @{ ["("] ~ function_access_args ~ [")"] }
+                    function_access_args = !@{ ( function_arg ~n~ ([","] ~n~ function_arg)* )? }
+                        function_arg = { expression }
+
+        // a version of accessing only for variables, for use in css bits:
+        variable_accessor = _{ !paren_expression ~ accessible }
+
+        // prefix application eg !$hello or -2
+        prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
+            prefix_application_fn = { ["-"] | ["!"] }
+            prefix_application_arg = !@{ primitive | accessible }
 
         // our block types; typically some selector and then contents inside { }:
         block = { keyframes_block | font_face_block | media_block | css_block }
@@ -88,7 +107,7 @@ impl_rdp! {
             block_inner = _{ (block_assignment | block_css | block_expression)* }
             block_close = { ["}"] }
 
-            block_expression = { (function_application | variable_accessor | block) ~ END }
+            block_expression = { (variable_accessor | block) ~ END }
             block_interpolated_expression = !@{ ["${"] ~n~ expression ~n~ ["}"] }
             block_assignment = { block_variable_assign ~n~ expression ~ END }
                 block_variable_assign = @{ variable ~ [":"] }
@@ -102,23 +121,10 @@ impl_rdp! {
             block_css_value = @{ (block_interpolated_expression | variable | block_css_value_chars)+ }
                 block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"] | ["}"]) ~ any )+ }
 
-        // covers not-infix function application eg !$a, and $a($b,$c):
-        application = { prefix_application | function_application }
-
-            prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
-            prefix_application_fn = { ["-"] | ["!"] }
-            prefix_application_arg = !@{ paren_expression | application | variable_accessor }
-
-            function_application = { function_application_fn ~ ["("] ~n~ function_application_args ~n~ [")"] }
-            function_application_fn = { variable_accessor | paren_expression }
-            function_application_args = { ( function_application_arg ~n~ ([","] ~n~ function_application_arg)* )? }
-            function_application_arg = { expression }
-
         // any expression can also exist in parentheses:
         paren_expression = { ["("] ~n~ expression ~n~ [")"] }
 
         variable = @{ ["$"] ~ variable_name }
-        variable_accessor = @{ variable ~ ( ["."] ~ variable_name )* }
         if_then_else = { ["if"] ~n~ expression ~n~ ["then"] ~n~ expression ~n~ ["else"] ~n~ expression }
 
         function = { ["("] ~n~ function_args? ~n~ [")"] ~n~ ["=>"] ~n~ function_expression }
@@ -188,11 +194,9 @@ impl_rdp! {
                 expression(rule, expr),
             (rule:if_then_else, expr:_if_then_else()) =>
                 expression(rule, expr),
-            (rule:application, expr:_application()) =>
+            (rule:prefix_application, expr:_prefix_application()) =>
                 expression(rule, expr),
-            (rule:function_application, expr:_function_application()) =>
-                expression(rule, expr),
-            (rule:variable_accessor, expr:_variable_accessor()) =>
+            (rule:accessible, expr:_accessible()) =>
                 expression(rule, expr),
             (rule:block, expr:_block()) =>
                 expression(rule, expr),
@@ -208,9 +212,9 @@ impl_rdp! {
         }
         _infix(&self) -> Expr {
             (left:_expression(), sign:_variable_expression(), right:_expression()) => {
-                Expr::App{
-                    expr: sign,
-                    args: vec![ left, right ]
+                Expr::Accessed{
+                    expression: sign,
+                    access: vec![ Accessor::Function{args:vec![left,right]} ]
                 }
             }
         }
@@ -220,7 +224,7 @@ impl_rdp! {
                 Expression::with_position(
                     Position(sign.start),
                     Position(sign.end),
-                    Expr::Var(tok.to_owned(), vec![])
+                    Expr::Var(tok.to_owned())
                 )
             }
         }
@@ -259,45 +263,50 @@ impl_rdp! {
                 }
             }
         }
-        _application(&self) -> Expr {
-            (_:prefix_application, sign:_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
-                Expr::App{
-                    expr: sign,
-                    args: vec![arg]
+        _prefix_application(&self) -> Expr {
+            (sign:_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
+                Expr::Accessed{
+                    expression: sign,
+                    access: vec![ Accessor::Function{args:vec![arg]} ]
                 }
             },
-            (_:function_application, expr:_function_application()) => {
-                expr
+        }
+        _accessible(&self) -> Expr {
+            (expr: _expression(), accessors: _accessors()) => {
+                let accessors: Vec<Accessor> = accessors.into_iter().collect();
+                if accessors.len() > 0 {
+                    Expr::Accessed{
+                        expression: expr,
+                        access: accessors
+                    }
+                } else {
+                    expr.into_expr().expect("should be able to unwrap accessible expr")
+                }
             }
         }
-        _function_application(&self) -> Expr {
-            (_:function_application_fn, func:_expression(), args:_application_args()) => {
-                Expr::App{
-                    expr: func,
+        _accessors(&self) -> LinkedList<Accessor> {
+            (_:property_access, &name:variable_name, mut rest: _accessors()) => {
+                rest.push_front(Accessor::Property{
+                    name: name.to_owned()
+                });
+                rest
+            },
+            (_:function_access, args:_function_access_args(), mut rest: _accessors()) => {
+                rest.push_front(Accessor::Function{
                     args: args.into_iter().collect::<Vec<Expression>>()
-                }
-            }
-        }
-        _application_args(&self) -> LinkedList<Expression> {
-            (_:function_application_args, args:_application_args()) => {
-                args
-            },
-            (_:function_application_arg, expr:_expression(), mut tail: _application_args()) => {
-                tail.push_front(expr);
-                tail
+                });
+                rest
             },
             () => {
                 LinkedList::new()
             }
         }
-        _variable_accessor(&self) -> Expr {
-            (_:variable, &var:variable_name, suffix: _variable_accessor_suffix()) => {
-                Expr::Var(var.to_owned(), suffix.into_iter().collect::<Vec<String>>())
-            }
-        }
-        _variable_accessor_suffix(&self) -> LinkedList<String> {
-            (&piece:variable_name, mut tail: _variable_accessor_suffix()) => {
-                tail.push_front(piece.to_owned());
+        _function_access_args(&self) -> LinkedList<Expression> {
+            (_:function_args, args:_function_access_args()) => {
+                args
+            },
+            (_:function_arg, expr:_expression(), mut tail: _function_access_args()) => {
+                tail.push_front(expr);
                 tail
             },
             () => {
