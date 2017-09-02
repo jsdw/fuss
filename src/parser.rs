@@ -200,6 +200,8 @@ impl_rdp! {
                 expression(rule, expr),
             (rule:block, expr:_block()) =>
                 expression(rule, expr),
+            (rule:variable, &var:variable_name) =>
+                expression(rule, Expr::Var(var.to_owned())),
             // primitives:
             (rule:string, &s:string_contents) =>
                 expression(rule, Expr::Prim(Primitive::Str(escaped_string(s)))),
@@ -272,8 +274,7 @@ impl_rdp! {
             },
         }
         _accessible(&self) -> Expr {
-            (expr: _expression(), accessors: _accessors()) => {
-                let accessors: Vec<Accessor> = accessors.into_iter().collect();
+            (expr: _expression(), accessors: _accessors_start()) => {
                 if accessors.len() > 0 {
                     Expr::Accessed{
                         expression: expr,
@@ -284,6 +285,14 @@ impl_rdp! {
                 }
             }
         }
+        _accessors_start(&self) -> Vec<Accessor> {
+            (_:access, accessors: _accessors()) => {
+                accessors.into_iter().collect()
+            },
+            () => {
+                Vec::new()
+            }
+        }
         _accessors(&self) -> LinkedList<Accessor> {
             (_:property_access, &name:variable_name, mut rest: _accessors()) => {
                 rest.push_front(Accessor::Property{
@@ -291,7 +300,7 @@ impl_rdp! {
                 });
                 rest
             },
-            (_:function_access, args:_function_access_args(), mut rest: _accessors()) => {
+            (_:function_access, _:function_access_args, args:_function_access_args(), mut rest: _accessors()) => {
                 rest.push_front(Accessor::Function{
                     args: args.into_iter().collect::<Vec<Expression>>()
                 });
@@ -302,9 +311,6 @@ impl_rdp! {
             }
         }
         _function_access_args(&self) -> LinkedList<Expression> {
-            (_:function_args, args:_function_access_args()) => {
-                args
-            },
             (_:function_arg, expr:_expression(), mut tail: _function_access_args()) => {
                 tail.push_front(expr);
                 tail
@@ -456,7 +462,37 @@ mod test {
     }
 
     fn var(name: &str) -> Expression {
-        e(Expr::Var(s(name),vec![]))
+        e(Expr::Var(s(name)))
+    }
+
+    fn b(b: bool) -> Expression {
+        e(Expr::Prim(Primitive::Bool(b)))
+    }
+
+    fn unit(n: f64, s: &str) -> Expression {
+        e(Expr::Prim(Primitive::Unit(n,s.to_owned())))
+    }
+
+    fn app(expression: Expression, args: Vec<Accessor>) -> Expression {
+        e(Expr::Accessed{
+            expression: expression,
+            access: args
+        })
+    }
+
+    fn a_prop(name: &str) -> Accessor {
+        Accessor::Property{ name: s(name) }
+    }
+
+    fn a_fn(args: Vec<Expression>) -> Accessor {
+        Accessor::Function{ args: args }
+    }
+
+    fn op(expression: Expression, args: Vec<Expression>) -> Expression {
+        e(Expr::Accessed{
+            expression: expression,
+            access: vec![ a_fn(args) ]
+        })
     }
 
     // make defining hash maps a little easier:
@@ -635,9 +671,9 @@ mod test {
     }
 
     process_test!{test_variable_e;
-        "$hello" => e(Expr::Var(s("hello"), vec![]));
-        "$hello.there" => e(Expr::Var(s("hello"), vec![s("there")]));
-        "$hello.there.you" => e(Expr::Var(s("hello"), vec![s("there"), s("you")]));
+        "$hello" => var("hello");
+        "$hello.there" => app(var("hello"), vec![a_prop("there")]);
+        "$hello.there.you" => app(var("hello"), vec![a_prop("there"), a_prop("you")]);
     }
 
     parse_test!{test_numeric;
@@ -654,11 +690,11 @@ mod test {
     }
 
     process_test!{test_number_e;
-        "10" => e(Expr::Prim(Primitive::Unit(10.0,s(""))));
-        "0" => e(Expr::Prim(Primitive::Unit(0.0,s(""))));
-        "0.12" => e(Expr::Prim(Primitive::Unit(0.12,s(""))));
-        "0%" => e(Expr::Prim(Primitive::Unit(0.0,s("%"))));
-        "100.0px" => e(Expr::Prim(Primitive::Unit(100.0,s("px"))));
+        "10" => unit(10.0,"");
+        "0" => unit(0.0,"");
+        "0.12" => unit(0.12,"");
+        "0%" => unit(0.0,"%");
+        "100.0px" => unit(100.0,"px");
     }
 
     parse_test!{test_if_then_else;
@@ -695,13 +731,13 @@ mod test {
         "($apPl_3s, $b2ananA) => true" =>
             e(Expr::Func{
                 inputs: vec![s("apPl_3s"),s("b2ananA")],
-                output: e(Expr::Prim(Primitive::Bool(true))),
+                output: b(true),
                 scope: Scope::new()
             });
         "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
             e(Expr::Func{
                 inputs: vec![s("a"),s("b")],
-                output: e(Expr::Prim(Primitive::Bool(false))),
+                output: b(false),
                 scope: Scope::new()
             });
     }
@@ -727,7 +763,7 @@ mod test {
     parse_test!{test_func_applications;
         "$hello(2px,true)" => expression[];
         "$hello(2px, true)" => expression[];
-        "$hello(2px, true)" => application[];
+        "$hello(2px, true)" => accessible[];
         "!$hello" => expression[];
         "!($hello)" => expression[];
         "!$hello()" => expression[];
@@ -736,79 +772,78 @@ mod test {
         "!($hello(2px))" => expression[];
         "!($hello(2px, true))" => expression[];
         "!$hello(2px, true)" => expression[];
-        "!$hello()" => application[];
-        "!$hello(1px)" => application[];
-        "!$hello(1px, true)" => application[];
-        "!($hello)" => application[];
-        "!($hello())" => application[];
-        "!($hello(1px))" => application[];
-        "!($hello(1px, true))" => application[];
+        "!$hello()" => prefix_application[];
+        "!$hello(1px)" => prefix_application[];
+        "!$hello(1px, true)" => prefix_application[];
+        "!($hello)" => prefix_application[];
+        "!($hello())" => prefix_application[];
+        "!($hello(1px))" => prefix_application[];
+        "!($hello(1px, true))" => prefix_application[];
+        "$hello.there($a).b" => expression[];
     }
 
     process_test!{test_func_applications_e;
         "$hello(2px, true)" =>
-            e(Expr::App{
-                expr: var("hello"),
-                args: vec![ e(Expr::Prim(Primitive::Unit(2.0,s("px")))), e(Expr::Prim(Primitive::Bool(true))) ]
-            });
+            op(
+                var("hello"),
+                vec![ unit(2.0,"px"), b(true) ]
+            );
         "!$hello" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![ e(Expr::Var(s("hello"),vec![])) ]
-            });
+            op(
+                var("!"),
+                vec![ var("hello") ]
+            );
         "!$hello.there" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![ e(Expr::Var(s("hello"),vec![s("there")])) ]
-            });
+            op(
+                var("!"),
+                vec![ app( var("hello"), vec![ a_prop("there") ]) ]
+            );
         "!$hello()" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![ e(Expr::App{ expr: var("hello"), args: vec![] }) ]
-            });
+            op(
+                var("!"),
+                vec![ app( var("hello"), vec![a_fn(vec![])] ) ]
+            );
         "!$hello($a)" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![
-                    e(Expr::App{
-                        expr: var("hello"),
-                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                    })
-                ]
-            });
+            op(
+                var("!"),
+                vec![ app( var("hello"), vec![ a_fn(vec![var("a")]) ] ) ]
+            );
         "$hello.there($a)" =>
-            e(Expr::App{
-                expr: e(Expr::Var(s("hello"),vec![s("there")])),
-                args: vec![ e(Expr::Var(s("a"),vec![])) ]
-            });
+            app(
+                var("hello"),
+                vec![ a_prop("there"), a_fn(vec![var("a")]) ]
+            );
+        "$hello.there(1px).b" =>
+            app(
+                var("hello"),
+                vec![ a_prop("there"), a_fn(vec![unit(1.0,"px")]), a_prop("b") ]
+            );
+        "$hello.there($a).b" =>
+            app(
+                var("hello"),
+                vec![ a_prop("there"), a_fn(vec![var("a")]), a_prop("b") ]
+            );
+        "$hello.there($a).b.c($d,$e)" =>
+            app(
+                var("hello"),
+                vec![ a_prop("there"), a_fn(vec![var("a")]), a_prop("b"), a_prop("c"), a_fn(vec![var("d"),var("e")]) ]
+            );
         "!$hello.there($a)" =>
-            e(Expr::App{
-                expr: var("!"),
-                args: vec![
-                    e(Expr::App{
-                        expr: e(Expr::Var(s("hello"),vec![s("there")])),
-                        args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                    })
+            op(
+                var("!"),
+                vec![ app(var("hello"), vec![ a_prop("there"), a_fn(vec![var("a")]) ]) ]
+            );
+        "!$hello.there($a) + 2px" =>
+            op(
+                var("+"),
+                vec![
+                    op(
+                        var("!"),
+                        vec![ app(var("hello"), vec![ a_prop("there"), a_fn(vec![var("a")]) ]) ]
+                    ),
+                    unit(2.0, "px")
                 ]
-            });
-        "!$hello.there($a)
-        +
-        2px" =>
-            e(Expr::App{
-                expr: var("+"),
-                args: vec![
-                    e(Expr::App{
-                        expr: var("!"),
-                        args: vec![
-                            e(Expr::App{
-                                expr: e(Expr::Var(s("hello"),vec![s("there")])),
-                                args: vec![ e(Expr::Var(s("a"),vec![])) ]
-                            })
-                        ]
-                    }),
-                    e(Expr::Prim(Primitive::Unit(2.0,s("px"))))
-                ]
-            });
+            );
     }
 
     parse_test!{test_block_css;
@@ -816,9 +851,7 @@ mod test {
         "${ $hello }: there;" => block_css[];
         "${ $hello }: the${ 2px }re;" => block_css[];
         "${ $hello }: the${ 2px * 2 }re;" => block_css[];
-        "hello: the${ 2px
-             *
-        2 }re;" => block_css[];
+        "hello: the${ 2px * 2 }re;" => block_css[];
     }
 
     parse_test!{test_block_assignment;
@@ -870,7 +903,7 @@ mod test {
             e(Expr::Block(Block::CSSBlock(CSSBlock{
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![
-                    s("hello") => e(Expr::Prim(Primitive::Unit(2f64, s("px"))))
+                    s("hello") => unit(2f64,"px")
                 ],
                 css: vec![]
             })));
@@ -909,7 +942,7 @@ mod test {
                 selector: vec![CSSBit::Str(s(".some-class "))],
                 scope: hash_map![],
                 css: vec![
-                    CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+                    CSSEntry::Expr(var("hello"))
                 ]
             })));
         ".some-class {
@@ -922,11 +955,11 @@ mod test {
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
                         scope: Scope::new(),
-                        output: e(Expr::Prim(Primitive::Bool(true)))
+                        output: b(true)
                     })
                 ],
                 css: vec![
-                    CSSEntry::Expr(e(Expr::Var(s("hello"), vec![])))
+                    CSSEntry::Expr(var("hello"))
                 ]
             })));
         "{
