@@ -803,6 +803,11 @@ mod test {
                 var("!"),
                 vec![ app( var("hello"), vec![a_fn(vec![])] ) ]
             );
+        "!$hello().b" =>
+            op(
+                var("!"),
+                vec![ app( var("hello"), vec![a_fn(vec![]),a_prop("b")] ) ]
+            );
         "!$hello($a)" =>
             op(
                 var("!"),
