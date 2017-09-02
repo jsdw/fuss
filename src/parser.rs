@@ -88,7 +88,7 @@ impl_rdp! {
                         function_arg = { expression }
 
         // a version of accessing only for variables, for use in css bits:
-        variable_accessor = _{ !paren_expression ~ accessible }
+        variable_accessor = { !paren_expression ~ accessible }
 
         // prefix application eg !$hello or -2
         prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
@@ -118,7 +118,7 @@ impl_rdp! {
 
             block_css_key = @{ (block_interpolated_expression | block_css_key_chars)+ }
                 block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
-            block_css_value = @{ (block_interpolated_expression | variable | block_css_value_chars)+ }
+            block_css_value = @{ (block_interpolated_expression | variable_accessor | block_css_value_chars)+ }
                 block_css_value_chars = @{ ( !(block_interpolated_expression | variable | [";"] | ["}"]) ~ any )+ }
 
         // any expression can also exist in parentheses:
@@ -175,6 +175,8 @@ impl_rdp! {
             (_:expression, expression:_expression()) =>
                 expression,
             (_:paren_expression, expression: _expression()) =>
+                expression,
+            (_:variable_accessor, expression:_expression()) =>
                 expression,
             // infix precedence parsing:
             (rule:infix0, expr:_infix()) =>
@@ -428,13 +430,13 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
-        _block_css_val(&self) -> LinkedList<CSSBit> { //TODO: FILL IN!
+        _block_css_val(&self) -> LinkedList<CSSBit> {
             (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_val()) => {
                 tail.push_front( CSSBit::Expr(expr) );
                 tail
             },
-            (_:variable, var:_variable_expression(), mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Expr(var) );
+            (_:variable_accessor, expr: _expression(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(expr) );
                 tail
             },
             (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
