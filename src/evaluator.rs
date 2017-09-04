@@ -234,7 +234,7 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                 get_dependencies_of(expression, search, out);
             },
             Expr::Block(ref block) => {
-                let mut search = search.clone();
+                let search = search.clone();
                 match *block {
                     Block::KeyframesBlock(ref b) => {
                         let search = get_dependencies_of_scope(&b.scope, &search, out);
@@ -326,8 +326,8 @@ fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) 
     };
 
     let mut out = HashMap::new();
-    let mut last = Vec::new();
-    for (key,&(expr,_)) in deps {
+    let last = Vec::new();
+    for (key,_) in deps {
         do_simplify(key, &last, deps, scope, context, &mut out)?;
     }
     Ok(out)

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Primitive values:
 #[derive(PartialEq,Debug,Clone)]
@@ -223,6 +222,7 @@ impl Scope {
         Scope(self.0.push(values))
     }
 
+    /*
     /// push one key and value onto the scope, returning a new one and
     /// leaving the original unchanged:
     pub fn push_one(&self, key: String, value: Expression) -> Scope {
@@ -230,6 +230,7 @@ impl Scope {
         map.insert(key, value);
         self.push(map)
     }
+    */
 }
 
 /// The context in which a thing is evaluated. This is read only and is passed
@@ -269,7 +270,6 @@ pub enum ErrorType {
     WrongNumberOfArguments{expected: usize, got: usize},
     WrongTypeOfArguments{message: String},
     NotACSSBlock,
-    LoopDetected,
     PropertyDoesNotExist(String),
     InvalidExpressionInCssValue(Box<Expr>),
     UnitMismatch,
@@ -281,10 +281,10 @@ pub enum ErrorType {
     CycleDetected(Vec<String>),
 
     // outputter errors:
-    Keyframes_KeyvalsNotAllowedAtTop,
-    Keyframes_KeyframesBlockNotAllowed,
-    Keyframes_FontFaceBlockNotAllowed,
-    Keyframes_MediaBlockNotAllowed,
-    Keyframes_NestedBlockNotAllowed,
-    Fontface_BlockNotAllowed
+    KeyframesKeyvalsNotAllowedAtTop,
+    KeyframesKeyframesBlockNotAllowed,
+    KeyframesFontFaceBlockNotAllowed,
+    KeyframesMediaBlockNotAllowed,
+    KeyframesNestedBlockNotAllowed,
+    FontfaceBlockNotAllowed
 }

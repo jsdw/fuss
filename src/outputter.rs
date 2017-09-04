@@ -353,18 +353,18 @@ fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Result<Keyframes,ErrorTyp
     for item in block.inner {
         match item {
             EvaluatedCSSEntry::KeyVal{..} => {
-                return Err(ErrorType::Keyframes_KeyvalsNotAllowedAtTop);
+                return Err(ErrorType::KeyframesKeyvalsNotAllowedAtTop);
             },
             EvaluatedCSSEntry::Block(block) => {
                 match block.block {
                     Block::KeyframesBlock(..) => {
-                        return Err(ErrorType::Keyframes_KeyframesBlockNotAllowed);
+                        return Err(ErrorType::KeyframesKeyframesBlockNotAllowed);
                     },
                     Block::FontFaceBlock(..) => {
-                        return Err(ErrorType::Keyframes_FontFaceBlockNotAllowed);
+                        return Err(ErrorType::KeyframesFontFaceBlockNotAllowed);
                     },
                     Block::MediaBlock(..) => {
-                        return Err(ErrorType::Keyframes_MediaBlockNotAllowed);
+                        return Err(ErrorType::KeyframesMediaBlockNotAllowed);
                     },
                     Block::CSSBlock(b) => {
                         let mut keyvals = vec![];
@@ -374,7 +374,7 @@ fn handle_keyframes(block: EvaluatedKeyframesBlock) -> Result<Keyframes,ErrorTyp
                                     keyvals.push( (key,val) );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
-                                    return Err(ErrorType::Keyframes_NestedBlockNotAllowed);
+                                    return Err(ErrorType::KeyframesNestedBlockNotAllowed);
                                 }
                             }
                         }
@@ -403,7 +403,7 @@ fn handle_fontface(block: EvaluatedFontFaceBlock) -> Result<FontFace,ErrorType> 
                 keyvals.push( (key,val) );
             },
             EvaluatedCSSEntry::Block(_) => {
-                return Err(ErrorType::Fontface_BlockNotAllowed);
+                return Err(ErrorType::FontfaceBlockNotAllowed);
             }
         }
     }
