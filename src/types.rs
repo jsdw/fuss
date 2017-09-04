@@ -238,7 +238,8 @@ impl Scope {
 pub struct Context {
     pub path: PathBuf,
     pub root: PathBuf,
-    pub file_cache: Cache<PathBuf,Expr>
+    pub file_cache: Cache<PathBuf,Expr>,
+    pub last: Vec<PathBuf>
 }
 
 #[derive(Copy,Clone,Debug,PartialEq)]
@@ -277,6 +278,7 @@ pub enum ErrorType {
     CannotReadFile(PathBuf),
     CannotImportNoPathSet,
 
+    ImportLoop(Vec<PathBuf>, PathBuf),
     ImportError(Box<Error>),
     CycleDetected(Vec<String>),
 

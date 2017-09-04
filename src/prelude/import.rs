@@ -50,7 +50,8 @@ pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
     let new_context = Context{
         path: final_path,
         root: context.root.clone(),
-        file_cache: context.file_cache.clone()
+        file_cache: context.file_cache.clone(),
+        last: { let mut l = context.last.clone(); l.push(context.path.clone()); l }
     };
 
     // try to open the found file:
@@ -61,6 +62,10 @@ pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
 fn import_path(mut context: Context) -> PrimRes {
 
     context.path.set_extension("fuss");
+
+    if context.last.iter().any(|p| p == &context.path) {
+        return Err(ErrorType::ImportLoop(context.last.clone(), context.path.clone()))
+    }
 
     if let None = context.path.file_name() {
         return Err(ErrorType::CannotOpenFile(context.path.clone()));
@@ -110,7 +115,8 @@ pub fn import_string(file: String) -> PrimRes {
     let context = Context{
         path: PathBuf::new(),
         root: PathBuf::new(),
-        file_cache: Cache::new()
+        file_cache: Cache::new(),
+        last: Vec::new()
     };
 
     import_path_with_string(context, file)
@@ -122,7 +128,8 @@ pub fn import_root(path: &PathBuf) -> PrimRes {
     let context = Context{
         path: path.clone(),
         root: path.clone(),
-        file_cache: Cache::new()
+        file_cache: Cache::new(),
+        last: Vec::new()
     };
 
     import_path(context)
