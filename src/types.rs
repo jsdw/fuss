@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use list::List;
+use cache::Cache;
 use std::path::PathBuf;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Primitive values:
 #[derive(PartialEq,Debug,Clone)]
@@ -232,10 +234,10 @@ impl Scope {
 
 /// The context in which a thing is evaluated. This is read only and is passed
 /// to al prim funcs etc.
-#[derive(Clone,Debug,PartialEq)]
 pub struct Context {
     pub path: PathBuf,
-    pub root: PathBuf
+    pub root: PathBuf,
+    pub file_cache: Cache<PathBuf,Expr>
 }
 
 #[derive(Copy,Clone,Debug,PartialEq)]

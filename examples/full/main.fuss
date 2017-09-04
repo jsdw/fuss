@@ -5,6 +5,7 @@
     $c: $a.b;
 
     $other: $import("other")
+    $other2: $import("../full/../full/other.fuss")
     $hello: ($a) => $a + 2px
     $fn: ($a) => .hi { background-color: $a; }
     $block: {

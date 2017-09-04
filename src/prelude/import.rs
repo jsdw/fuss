@@ -4,10 +4,12 @@ use std::fs::File;
 use std::io::Read;
 use evaluator::eval;
 use parser::parse;
+use cache::Cache;
 use std::path::PathBuf;
 
 /// cast an expression to a boolean as best we can
 pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
+
     if args.len() > 1 {
         return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
@@ -45,47 +47,48 @@ pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
         }
     }
 
+    let new_context = Context{
+        path: final_path,
+        root: context.root.clone(),
+        file_cache: context.file_cache.clone()
+    };
+
     // try to open the found file:
-    import_path(&final_path, &context.root)
+    import_path(new_context)
 
 }
 
-fn import_path(path: &PathBuf, root: &PathBuf) -> PrimRes {
+fn import_path(mut context: Context) -> PrimRes {
 
-    if let None = path.file_name() {
-        return Err(ErrorType::CannotOpenFile(path.clone()));
+    context.path.set_extension("fuss");
+
+    if let None = context.path.file_name() {
+        return Err(ErrorType::CannotOpenFile(context.path.clone()));
     }
 
-    let mut file = File::open(&path).or_else(|_| {
-        //failed to open; try again setting extension to .fuss
-        let mut filename = path.file_name().unwrap().to_owned();
-        filename.push(".fuss");
-        let new_path = path.with_file_name(&filename);
-        File::open(&new_path)
-    }).map_err(|_| ErrorType::CannotOpenFile(path.clone()))?;
+    if context.file_cache.exists(&context.path) {
+        return Ok( context.file_cache.get(&context.path).unwrap() );
+    }
+
+    let mut file = File::open(&context.path).map_err(|_| ErrorType::CannotOpenFile(context.path.clone()))?;
 
     let mut file_contents = String::new();
-    file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(path.clone()))?;
-    import_path_with_string(path, root, file_contents)
+    file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(context.path.clone()))?;
+    import_path_with_string(context, file_contents)
 
 }
 
-fn import_path_with_string(path: &PathBuf, root: &PathBuf, contents: String) -> PrimRes {
-
-    let context = Context{
-        path: path.clone(),
-        root: root.clone()
-    };
+fn import_path_with_string(context: Context, contents: String) -> PrimRes {
 
     // let res = parse(&input);
     let res = match parse(&contents) {
         Ok(expr) => eval(&expr, super::get_prelude(), &context).map_err(|mut e| {
-            e.file = path.clone();
+            e.file = context.path.clone();
             e
         }),
         Err(err) => Err(Error{
             ty: err,
-            file: path.clone(),
+            file: context.path.clone(),
             start: Position::new(),
             end: Position::new()
         })
@@ -93,16 +96,34 @@ fn import_path_with_string(path: &PathBuf, root: &PathBuf, contents: String) -> 
 
     // return either the Expr or an ImportError which wraps the import issue.
     res.map_err(|e| ErrorType::ImportError(Box::new(e)))
-       .map(|e| e.into_expr().expect("importing file: couldn't unwrap Rc"))
+       .map(|e| {
+           let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
+           context.file_cache.set(context.path.clone(), expr.clone());
+           expr
+       })
 }
 
 /// use this to eval a string into fuss; useful for interactive stuff but
 /// can't import files if we didn't start with an actual filepath.
 pub fn import_string(file: String) -> PrimRes {
-    import_path_with_string(&PathBuf::new(), &PathBuf::new(), file)
+
+    let context = Context{
+        path: PathBuf::new(),
+        root: PathBuf::new(),
+        file_cache: Cache::new()
+    };
+
+    import_path_with_string(context, file)
 }
 
 /// our standard import mechanism, to get us going.
 pub fn import_root(path: &PathBuf) -> PrimRes {
-    import_path(path, path)
+
+    let context = Context{
+        path: path.clone(),
+        root: path.clone(),
+        file_cache: Cache::new()
+    };
+
+    import_path(context)
 }

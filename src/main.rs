@@ -10,6 +10,7 @@ mod parser;
 mod types;
 mod evaluator;
 mod list;
+mod cache;
 mod outputter;
 mod prelude;
 
