@@ -89,7 +89,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
                                     curr = val.clone();
                                 },
                                 None => {
-                                    return err!(e, PropertyDoesNotExist(name.to_owned()));
+                                    curr = Expression::new(Expr::Undefined);
                                 }
                             }
                         } else {
