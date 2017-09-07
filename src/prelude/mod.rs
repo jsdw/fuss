@@ -1,6 +1,7 @@
 pub mod ops;
 pub mod casting;
 pub mod import;
+pub mod blocks;
 
 use types::*;
 
@@ -23,7 +24,8 @@ fn get_prelude() -> Scope {
         "||" => ops::boolean_or;
         "to_boolean" => casting::boolean;
         "to_string" => casting::string;
-        "import" => import::import
+        "import" => import::import;
+        "merge" => blocks::merge
 
     }
 }
