@@ -1,5 +1,4 @@
 use types::*;
-use types::Primitive::*;
 use std::fs::File;
 use std::io::Read;
 use evaluator::eval;
@@ -19,7 +18,7 @@ pub fn import(args: &Vec<Expression>, context: &Context) -> PrimRes {
 
     // expect a string input:
     let a = &args[0];
-    let relpath = if let Expr::Prim(Str(ref relpath)) = a.expr {
+    let relpath = if let Expr::Str(ref relpath) = a.expr {
         Ok(relpath)
     } else {
         Err(ErrorType::WrongTypeOfArguments{ message: "import requires a path string".to_owned() })

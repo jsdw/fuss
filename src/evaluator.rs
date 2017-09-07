@@ -7,8 +7,17 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
     match e.expr {
 
-        /// We don't need to simplify primitives; they don't get any simpler!
-        Expr::Prim(_) => Ok(e.clone()),
+        /// String eg "hello"
+        Expr::Str(..) => Ok(e.clone()),
+
+        /// boolean eg true or false
+        Expr::Bool(..) => Ok(e.clone()),
+
+        /// unit eg 12px, 100%, 30
+        Expr::Unit(..) => Ok(e.clone()),
+
+        /// undefined
+        Expr::Undefined => Ok(e.clone()),
 
         /// primitive functions are essentailly black boxes that we pass exprs into
         /// and get some result out; we can't simplify them.
@@ -99,6 +108,12 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
                         match curr.clone().expr {
                             Expr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
 
+                                // if too few args provided, set rest to undefined:
+                                while arg_names.len() > simplified_args.len() {
+                                    simplified_args.push( Expression::new(Expr::Undefined) );
+                                }
+
+                                // complain if too many args are provided:
                                 if arg_names.len() != simplified_args.len() {
                                     return err!(e,WrongNumberOfArguments{
                                         expected: arg_names.len(),
@@ -206,7 +221,10 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
 
     fn get_dependencies_of(e: &Expression, search: &HashSet<String>, out: &mut HashSet<String>) {
         match e.expr {
-            Expr::Prim(..) => {},
+            Expr::Str(..) => {},
+            Expr::Bool(..) => {},
+            Expr::Unit(..) => {},
+            Expr::Undefined => {},
             Expr::PrimFunc(..) => {},
             Expr::If{ ref cond, ref then, ref otherwise } => {
                 get_dependencies_of(cond, search, out);

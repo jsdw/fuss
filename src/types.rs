@@ -6,14 +6,6 @@ use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
 
-/// Primitive values:
-#[derive(PartialEq,Debug,Clone)]
-pub enum Primitive {
-    Str(String),
-    Bool(bool),
-    Unit(f64, String)
-}
-
 /// The possible things that can crop up in a CSS block
 #[derive(PartialEq,Debug,Clone)]
 pub enum CSSEntry {
@@ -104,8 +96,14 @@ impl<T,U> Block<T,U> {
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
-    /// A primitive eg "hello", 12, 100%, 8px, true, false
-    Prim(Primitive),
+    /// String eg "hello"
+    Str(String),
+    /// boolean eg true or false
+    Bool(bool),
+    /// unit eg 12px, 100%, 30
+    Unit(f64, String),
+    /// undefined
+    Undefined,
     /// A primitive function
     PrimFunc(PrimFunc),
     /// An if expression eg if this then 2px else 20%

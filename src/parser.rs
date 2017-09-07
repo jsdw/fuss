@@ -59,7 +59,7 @@ impl_rdp! {
 
         // different types of expression, plus infix ops in reverse precedence order:
         expression = {
-            { primitive | if_then_else | function | prefix_application | accessible | block }
+            { undefined | string | boolean | unit | if_then_else | function | prefix_application | accessible | block }
             infix0 = { n~ infix0_op ~n }
             infix1 = { n~ infix1_op ~n }
             infix2 = { n~ infix2_op ~n }
@@ -68,7 +68,7 @@ impl_rdp! {
             infix5 = {< n~ infix5_op ~n }
         }
 
-        primitive = _{ string | boolean | unit }
+        undefined = { ["undefined"] }
 
         // all of our allowed infix ops:
         infix0_op = { ["||"] }
@@ -93,7 +93,7 @@ impl_rdp! {
         // prefix application eg !$hello or -2
         prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
             prefix_application_fn = { ["-"] | ["!"] }
-            prefix_application_arg = !@{ primitive | accessible }
+            prefix_application_arg = !@{ undefined | string | boolean | unit | accessible }
 
         // our block types; typically some selector and then contents inside { }:
         block = { keyframes_block | font_face_block | media_block | css_block }
@@ -206,13 +206,15 @@ impl_rdp! {
                 expression(rule, Expr::Var(var.to_owned())),
             // primitives:
             (rule:string, &s:string_contents) =>
-                expression(rule, Expr::Prim(Primitive::Str(escaped_string(s)))),
+                expression(rule, Expr::Str(escaped_string(s))),
             (rule:unit, &n:number, &s:number_suffix) =>
-                expression(rule, Expr::Prim(Primitive::Unit( n.parse::<f64>().unwrap(), s.to_owned() ))),
+                expression(rule, Expr::Unit( n.parse::<f64>().unwrap(), s.to_owned() )),
             (rule:boolean, _:boolean_true) =>
-                expression(rule, Expr::Prim(Primitive::Bool(true))),
+                expression(rule, Expr::Bool(true)),
             (rule:boolean, _:boolean_false) =>
-                expression(rule, Expr::Prim(Primitive::Bool(false))),
+                expression(rule, Expr::Bool(false)),
+            (rule:undefined) =>
+                expression(rule, Expr::Undefined),
         }
         _infix(&self) -> Expr {
             (left:_expression(), sign:_variable_expression(), right:_expression()) => {
@@ -468,11 +470,11 @@ mod test {
     }
 
     fn b(b: bool) -> Expression {
-        e(Expr::Prim(Primitive::Bool(b)))
+        e(Expr::Bool(b))
     }
 
     fn unit(n: f64, s: &str) -> Expression {
-        e(Expr::Prim(Primitive::Unit(n,s.to_owned())))
+        e(Expr::Unit(n,s.to_owned()))
     }
 
     fn app(expression: Expression, args: Vec<Accessor>) -> Expression {
@@ -715,13 +717,13 @@ mod test {
 
     process_test!{test_strings_e;
         r#""hello""# =>
-            e(Expr::Prim(Primitive::Str(s("hello"))));
+            e(Expr::Str(s("hello")));
         r#""""# =>
-            e(Expr::Prim(Primitive::Str(s(""))));
+            e(Expr::Str(s("")));
         r#""escaped \"lark\"""# =>
-            e(Expr::Prim(Primitive::Str(s(r#"escaped "lark""#))));
+            e(Expr::Str(s(r#"escaped "lark""#)));
         r#"" \\lark\\ ""# =>
-            e(Expr::Prim(Primitive::Str(s(r#" \lark\ "#))));
+            e(Expr::Str(s(r#" \lark\ "#)));
     }
 
     parse_test!{test_functions;
@@ -923,7 +925,7 @@ mod test {
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
                         scope: Scope::new(),
-                        output: e(Expr::Prim(Primitive::Bool(true)))
+                        output: e(Expr::Bool(true))
                     })
                 ],
                 css: vec![]
