@@ -96,12 +96,7 @@ impl_rdp! {
             prefix_application_arg = !@{ undefined | string | boolean | unit | accessible }
 
         // our block types; typically some selector and then contents inside { }:
-        block = { keyframes_block | font_face_block | media_block | css_block }
-
-            keyframes_block = { ["@keyframes"] ~n~ block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
-            font_face_block = { ["@font-face"] ~n~ block_open ~n~ block_inner ~n~ block_close }
-            media_block = { ["@media"] ~n~ block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
-            css_block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
+        block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
 
             block_open = { ["{"] }
             block_inner = _{ (block_assignment | block_css | block_expression)* }
@@ -325,40 +320,20 @@ impl_rdp! {
         }
         _css_block_inner_block(&self) -> UnevaluatedBlock {
             (inner:_css_block_inner()) => {
-                Block::CSSBlock(CSSBlock{
+                Block {
                     scope:inner.scope,
                     css:inner.css,
                     selector:vec![]
-                })
+                }
             }
         }
         _block(&self) -> Expr {
-            (_:keyframes_block, _:block_selector, name:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                Expr::Block(Block::KeyframesBlock(KeyframesBlock{
-                    name: name.into_iter().collect::<Vec<CSSBit>>(),
-                    scope: inner.scope,
-                    inner: inner.css
-                }))
-            },
-            (_:font_face_block, _:block_open, inner:_css_block_inner(), _:block_close) => {
-                Expr::Block(Block::FontFaceBlock(FontFaceBlock{
-                    scope: inner.scope,
-                    css: inner.css
-                }))
-            },
-            (_:media_block, _:block_selector, query:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                Expr::Block(Block::MediaBlock(MediaBlock{
-                    query: query.into_iter().collect::<Vec<CSSBit>>(),
-                    scope: inner.scope,
-                    css: inner.css
-                }))
-            },
-            (_:css_block, _:block_selector, selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-                Expr::Block(Block::CSSBlock(CSSBlock{
+            (_:block_selector, selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+                Expr::Block(Block{
                     selector: selector.into_iter().collect::<Vec<CSSBit>>(),
                     scope: inner.scope,
                     css: inner.css
-                }))
+                })
             }
         }
         _block_selector(&self) -> LinkedList<CSSBit> {

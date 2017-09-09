@@ -32,66 +32,30 @@ pub enum CSSBit {
     Expr(Expression)
 }
 
-/// The different kind of CSS blocks that we know about
+#[derive(PartialEq,Debug,Clone,Copy)]
+pub enum BlockType {
+    Media,
+    Keyframes,
+    FontFace,
+    Generic
+}
+
 #[derive(PartialEq,Debug,Clone)]
-pub enum Block<Selector,Inner> {
-    KeyframesBlock(KeyframesBlock<Selector,Inner>),
-    MediaBlock(MediaBlock<Selector,Inner>),
-    FontFaceBlock(FontFaceBlock<Inner>),
-    CSSBlock(CSSBlock<Selector,Inner>)
+pub struct Block<Selector,CSS> {
+    pub scope: HashMap<String,Expression>,
+    pub selector: Selector,
+    pub css: Vec<CSS>
 }
 pub type UnevaluatedBlock = Block<Vec<CSSBit>, CSSEntry>;
 
 #[derive(PartialEq,Debug,Clone)]
 pub struct EvaluatedBlock {
+    pub ty: BlockType,
     pub start: Position,
     pub end: Position,
-    pub block: Block<String, EvaluatedCSSEntry>
+    pub block: EvaluatedBlockInner
 }
-
-/// A CSS block, along with any scope that encloses it (variable definitions).
-#[derive(PartialEq,Debug,Clone)]
-pub struct CSSBlock<Selector,CSS> {
-    pub scope: HashMap<String,Expression>,
-    pub selector: Selector,
-    pub css: Vec<CSS>
-}
-
-/// A keyframes animation block
-#[derive(PartialEq,Debug,Clone)]
-pub struct KeyframesBlock<Name, Inner> {
-    pub scope: HashMap<String,Expression>,
-    pub name: Name,
-    pub inner: Vec<Inner>
-}
-pub type EvaluatedKeyframesBlock = KeyframesBlock<String, EvaluatedCSSEntry>;
-
-/// A media query block.
-#[derive(PartialEq,Debug,Clone)]
-pub struct MediaBlock<Query,CSS> {
-    pub scope: HashMap<String,Expression>,
-    pub query: Query,
-    pub css: Vec<CSS>
-}
-
-/// A font face block.
-#[derive(PartialEq,Debug,Clone)]
-pub struct FontFaceBlock<CSS> {
-    pub scope: HashMap<String,Expression>,
-    pub css: Vec<CSS>
-}
-pub type EvaluatedFontFaceBlock = FontFaceBlock<EvaluatedCSSEntry>;
-
-impl<T,U> Block<T,U> {
-    pub fn scope(&self) -> Option<&HashMap<String,Expression>> {
-        match *self {
-            Block::KeyframesBlock(ref b) => Some(&b.scope),
-            Block::MediaBlock(ref b) => Some(&b.scope),
-            Block::FontFaceBlock(ref b) => Some(&b.scope),
-            Block::CSSBlock(ref b) => Some(&b.scope)
-        }
-    }
-}
+pub type EvaluatedBlockInner = Block<String, EvaluatedCSSEntry>;
 
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]

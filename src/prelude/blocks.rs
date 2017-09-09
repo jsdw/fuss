@@ -4,6 +4,7 @@ use std::collections::HashMap;
 /// merge variables declared in blocks, outputting a single block. Ignore Undefined variables.
 pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
+    let mut ty = BlockType::Generic;
     let mut scope = HashMap::new();
     let mut css = Vec::new();
     let mut selector = String::new();
@@ -19,17 +20,16 @@ pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
                 }
             },
             Expr::EvaluatedBlock(ref b) => {
-                if let Block::CSSBlock(ref c) = b.block {
-                    for (key,val) in &c.scope {
-                        if val.expr == Expr::Undefined { continue }
-                        scope.insert(key.clone(), val.clone());
-                    }
-                    for item in &c.css {
-                        css.push(item.clone());
-                    }
-                    if !seen_first {
-                        selector = c.selector.clone();
-                    }
+                for (key,val) in &b.block.scope {
+                    if val.expr == Expr::Undefined { continue }
+                    scope.insert(key.clone(), val.clone());
+                }
+                for item in &b.block.css {
+                    css.push(item.clone());
+                }
+                if !seen_first {
+                    selector = b.block.selector.clone();
+                    ty = b.ty;
                 }
             },
             _ => {
@@ -42,13 +42,14 @@ pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
     }
 
     Ok(Expr::EvaluatedBlock(EvaluatedBlock{
+        ty: ty,
         start: Position::new(),
         end: Position::new(),
-        block: Block::CSSBlock(CSSBlock{
+        block: Block{
             scope: scope,
             selector: selector,
             css: css
-        })
+        }
     }))
 
 }

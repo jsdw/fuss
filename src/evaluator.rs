@@ -84,7 +84,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
                     Accessor::Property{ ref name } => {
 
                         if let Expr::EvaluatedBlock(ref b) = curr.clone().expr {
-                            match b.block.scope().and_then(|s| s.get(name)) {
+                            match b.block.scope.get(name) {
                                 Some(val) => {
                                     curr = val.clone();
                                 },
@@ -155,57 +155,33 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
 
         /// For Blocks, we do our best to simplify the block contents, complaining
         /// if there is something invalid somewhere.
-        Expr::Block(ref block_enum) => {
+        Expr::Block(ref block) => {
 
-            /// wrap the output appropriately:
-            let start = e.start;
-            let end = e.end;
-            let out = |b| EvaluatedBlock{start:start,end:end,block:b};
+            let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
+            let new_scope = scope.push(block_scope.clone());
 
-            /// simplify the block as best as we can, throwing up any errors in doing so.
-            let simplified_block = match *block_enum {
-                Block::KeyframesBlock(ref block) => {
-                    let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
-                    let new_scope = scope.push(block_scope.clone());
+            let css = try_eval_cssentries(&block.css, &new_scope, context)?;
+            let mut selector = try_cssbits_to_string(&block.selector, &new_scope, context)?;
+            let mut ty = BlockType::Generic;
 
-                    out(Block::KeyframesBlock(KeyframesBlock{
-                        scope: block_scope,
-                        name: try_cssbits_to_string(&block.name, &new_scope, context)?,
-                        inner: try_eval_cssentries(&block.inner, &new_scope, context)?
-                    }))
-                },
-                Block::MediaBlock(ref block) => {
-                    let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
-                    let new_scope = scope.push(block_scope.clone());
+            let media_str = "@media ";
+            let keyframes_str = "@keyframes ";
+            let fontface_str = "@font-face";
 
-                    out(Block::MediaBlock(MediaBlock{
-                        scope: block_scope,
-                        query: try_cssbits_to_string(&block.query, &new_scope, context)?,
-                        css: try_eval_cssentries(&block.css, &new_scope, context)?
-                    }))
-                },
-                Block::FontFaceBlock(ref block) => {
-                    let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
-                    let new_scope = scope.push(block_scope.clone());
+            if selector.starts_with(media_str) { ty = BlockType::Media; selector = selector.replacen(media_str,"",1); }
+            else if selector.starts_with(keyframes_str) { ty = BlockType::Keyframes; selector = selector.replacen(keyframes_str,"",1); }
+            else if selector.starts_with(fontface_str) { ty = BlockType::FontFace; selector = selector.replacen(fontface_str,"",1); }
 
-                    out(Block::FontFaceBlock(FontFaceBlock{
-                        scope: block_scope,
-                        css: try_eval_cssentries(&block.css, &new_scope, context)?
-                    }))
-                },
-                Block::CSSBlock(ref block) => {
-                    let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
-                    let new_scope = scope.push(block_scope.clone());
-
-                    out(Block::CSSBlock(CSSBlock{
-                        scope: block_scope,
-                        selector: try_cssbits_to_string(&block.selector, &new_scope, context)?,
-                        css: try_eval_cssentries(&block.css, &new_scope, context)?
-                    }))
+            Ok(expression_from![e, Expr::EvaluatedBlock(EvaluatedBlock{
+                ty: ty,
+                start: e.start,
+                end: e.end,
+                block: Block{
+                    scope: block_scope,
+                    selector: selector,
+                    css: css
                 }
-            };
-
-            Ok(expression_from!{e, Expr::EvaluatedBlock(simplified_block)})
+            })])
 
         },
 
@@ -252,28 +228,9 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                 get_dependencies_of(expression, search, out);
             },
             Expr::Block(ref block) => {
-                let search = search.clone();
-                match *block {
-                    Block::KeyframesBlock(ref b) => {
-                        let search = get_dependencies_of_scope(&b.scope, &search, out);
-                        get_dependencies_of_cssbits(&b.name, &search, out);
-                        get_dependencies_of_cssentries(&b.inner, &search, out);
-                    },
-                    Block::MediaBlock(ref b) => {
-                        let search = get_dependencies_of_scope(&b.scope, &search, out);
-                        get_dependencies_of_cssbits(&b.query, &search, out);
-                        get_dependencies_of_cssentries(&b.css, &search, out);
-                    },
-                    Block::FontFaceBlock(ref b) => {
-                        let search = get_dependencies_of_scope(&b.scope, &search, out);
-                        get_dependencies_of_cssentries(&b.css, &search, out);
-                    },
-                    Block::CSSBlock(ref b) => {
-                        let search = get_dependencies_of_scope(&b.scope, &search, out);
-                        get_dependencies_of_cssbits(&b.selector, &search, out);
-                        get_dependencies_of_cssentries(&b.css, &search, out);
-                    },
-                }
+                let search = get_dependencies_of_scope(&block.scope, &search.clone(), out);
+                get_dependencies_of_cssbits(&block.selector, &search, out);
+                get_dependencies_of_cssentries(&block.css, &search, out);
             },
             Expr::EvaluatedBlock(..) => {}
         };
@@ -377,7 +334,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
             }
         }
     }
-    Ok(string.concat())
+    Ok(string.concat().trim().to_owned())
 }
 fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<EvaluatedCSSEntry>,Error> {
     let mut out = vec![];
