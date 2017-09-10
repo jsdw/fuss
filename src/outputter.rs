@@ -286,15 +286,18 @@ impl Items {
                     keyvals.push( (key,val) );
                 },
 
-                EvaluatedCSSEntry::Block(b) => {
+                EvaluatedCSSEntry::Block(block) => {
 
-                    match b.ty {
+                    struct Pos{ start: Position, end: Position };
+                    let pos = Pos{ start: block.start, end: block.end };
+
+                    match block.ty {
                         BlockType::Keyframes => {
 
                             let k = if loc.media.len() == 0 { &mut self.keyframes } else { &mut keyframes };
 
-                            k.push(match handle_keyframes(b.block) {
-                                Err(e) => err!(b, e),
+                            k.push(match handle_keyframes(block) {
+                                Err(e) => err!(pos, e),
                                 Ok(v) => Ok(v)
                             });
 
@@ -303,8 +306,8 @@ impl Items {
 
                             let v = if loc.media.len() == 0 { &mut self.fontfaces } else { &mut fontfaces };
 
-                            v.push(match handle_fontface(b.block) {
-                                Err(e) => err!(b, e),
+                            v.push(match handle_fontface(block) {
+                                Err(e) => err!(pos, e),
                                 Ok(v) => Ok(v)
                             });
 
@@ -313,10 +316,10 @@ impl Items {
 
                             append_current!();
                             let next_loc = Loc {
-                                media: { let mut m = loc.media.clone(); m.push(b.block.selector); m },
+                                media: { let mut m = loc.media.clone(); m.push(block.selector); m },
                                 selector: loc.selector.clone()
                             };
-                            self.populate_from_entries(b.block.css, next_loc);
+                            self.populate_from_entries(block.css, next_loc);
 
                         },
                         BlockType::Generic => {
@@ -326,11 +329,11 @@ impl Items {
                                 media: loc.media.clone(),
                                 selector: {
                                     let mut s = loc.selector.clone();
-                                    if b.block.selector.len() > 0 { s.push(b.block.selector); }
+                                    if block.selector.len() > 0 { s.push(block.selector); }
                                     s
                                 }
                             };
-                            self.populate_from_entries(b.block.css, next_loc);
+                            self.populate_from_entries(block.css, next_loc);
 
                         }
                     }
@@ -346,7 +349,7 @@ impl Items {
 
 }
 
-fn handle_keyframes(block: EvaluatedBlockInner) -> Result<Keyframes,ErrorType> {
+fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorType> {
 
     let mut inner = vec![];
     for item in block.css {
@@ -354,8 +357,8 @@ fn handle_keyframes(block: EvaluatedBlockInner) -> Result<Keyframes,ErrorType> {
             EvaluatedCSSEntry::KeyVal{..} => {
                 return Err(ErrorType::KeyframesKeyvalsNotAllowedAtTop);
             },
-            EvaluatedCSSEntry::Block(b) => {
-                match b.ty {
+            EvaluatedCSSEntry::Block(block) => {
+                match block.ty {
                     BlockType::Keyframes => {
                         return Err(ErrorType::KeyframesKeyframesBlockNotAllowed);
                     },
@@ -367,7 +370,7 @@ fn handle_keyframes(block: EvaluatedBlockInner) -> Result<Keyframes,ErrorType> {
                     },
                     BlockType::Generic => {
                         let mut keyvals = vec![];
-                        for entry in b.block.css {
+                        for entry in block.css {
                             match entry {
                                 EvaluatedCSSEntry::KeyVal{key,val} => {
                                     keyvals.push( (key,val) );
@@ -378,7 +381,7 @@ fn handle_keyframes(block: EvaluatedBlockInner) -> Result<Keyframes,ErrorType> {
                             }
                         }
                         inner.push(KeyframesInner{
-                            selector: b.block.selector,
+                            selector: block.selector,
                             keyvals: keyvals
                         });
                     }
@@ -393,7 +396,7 @@ fn handle_keyframes(block: EvaluatedBlockInner) -> Result<Keyframes,ErrorType> {
     })
 
 }
-fn handle_fontface(block: EvaluatedBlockInner) -> Result<FontFace,ErrorType> {
+fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorType> {
 
     let mut keyvals = vec![];
     for item in block.css {

@@ -2,7 +2,7 @@ use types::*;
 use std::collections::HashMap;
 
 /// merge variables declared in blocks, outputting a single block. Ignore Undefined variables.
-pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
+pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     let mut ty = BlockType::Generic;
     let mut scope = HashMap::new();
@@ -12,24 +12,24 @@ pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
 
     for e in args {
         match e.expr {
-            Expr::Undefined => {
+            EvaluatedExpr::Undefined => {
                 if !seen_first {
                     return Err(ErrorType::WrongTypeOfArguments{
                         message: "the first argument should not be undefined".to_owned()
                     });
                 }
             },
-            Expr::EvaluatedBlock(ref b) => {
-                for (key,val) in &b.block.scope {
-                    if val.expr == Expr::Undefined { continue }
+            EvaluatedExpr::Block(ref block) => {
+                for (key,val) in &block.scope {
+                    if val.expr == EvaluatedExpr::Undefined { continue }
                     scope.insert(key.clone(), val.clone());
                 }
-                for item in &b.block.css {
+                for item in &block.css {
                     css.push(item.clone());
                 }
                 if !seen_first {
-                    selector = b.block.selector.clone();
-                    ty = b.ty;
+                    selector = block.selector.clone();
+                    ty = block.ty;
                 }
             },
             _ => {
@@ -41,15 +41,13 @@ pub fn merge(args: &Vec<Expression>, _context: &Context) -> PrimRes {
         seen_first = true;
     }
 
-    Ok(Expr::EvaluatedBlock(EvaluatedBlock{
+    Ok(EvaluatedExpr::Block(EvaluatedBlock{
         ty: ty,
         start: Position::new(),
         end: Position::new(),
-        block: Block{
-            scope: scope,
-            selector: selector,
-            css: css
-        }
+        scope: scope,
+        selector: selector,
+        css: css
     }))
 
 }

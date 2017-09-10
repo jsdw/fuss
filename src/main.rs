@@ -54,7 +54,7 @@ fn run() {
             Err(e) => {
                 eprintln!("Error: {:?}", e);
             },
-            Ok(Expr::EvaluatedBlock(block)) => {
+            Ok(EvaluatedExpr::Block(block)) => {
                 outputter::print_css(block);
             },
             Ok(_) => {

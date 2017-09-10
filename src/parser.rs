@@ -234,15 +234,13 @@ impl_rdp! {
                 let arg_vec = args.into_iter().collect::<Vec<String>>();
                 Expr::Func{
                     inputs: arg_vec,
-                    output: expr,
-                    scope: Scope::new()
+                    output: expr
                 }
             },
             (_:function_expression, expr:_expression()) => {
                 Expr::Func{
                     inputs: vec![],
-                    output: expr,
-                    scope: Scope::new()
+                    output: expr
                 }
             },
         }
@@ -318,7 +316,7 @@ impl_rdp! {
                 LinkedList::new()
             }
         }
-        _css_block_inner_block(&self) -> UnevaluatedBlock {
+        _css_block_inner_block(&self) -> Block {
             (inner:_css_block_inner()) => {
                 Block {
                     scope:inner.scope,
@@ -710,14 +708,12 @@ mod test {
         "($apPl_3s, $b2ananA) => true" =>
             e(Expr::Func{
                 inputs: vec![s("apPl_3s"),s("b2ananA")],
-                output: b(true),
-                scope: Scope::new()
+                output: b(true)
             });
         "(\n$a\t,\n\t \n$b\n)\n\t\t=>\n\t\tfalse" =>
             e(Expr::Func{
                 inputs: vec![s("a"),s("b")],
-                output: b(false),
-                scope: Scope::new()
+                output: b(false)
             });
     }
 
@@ -899,7 +895,6 @@ mod test {
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
-                        scope: Scope::new(),
                         output: e(Expr::Bool(true))
                     })
                 ],
@@ -938,7 +933,6 @@ mod test {
                 scope: hash_map![
                     s("hello") => e(Expr::Func{
                         inputs: vec![s("a"), s("b")],
-                        scope: Scope::new(),
                         output: b(true)
                     })
                 ],

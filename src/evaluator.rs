@@ -3,28 +3,21 @@ use types::ErrorType::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
+pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<EvaluatedExpression,Error> {
 
     match e.expr {
 
         /// String eg "hello"
-        Expr::Str(..) => Ok(e.clone()),
+        Expr::Str(ref s) => Ok(expression_from!{e, EvaluatedExpr::Str(s.clone())}),
 
         /// boolean eg true or false
-        Expr::Bool(..) => Ok(e.clone()),
+        Expr::Bool(b) => Ok(expression_from!{e, EvaluatedExpr::Bool(b)}),
 
         /// unit eg 12px, 100%, 30
-        Expr::Unit(..) => Ok(e.clone()),
+        Expr::Unit(n, ref unit) => Ok(expression_from!{e, EvaluatedExpr::Unit(n,unit.clone())}),
 
         /// undefined
-        Expr::Undefined => Ok(e.clone()),
-
-        /// primitive functions are essentailly black boxes that we pass exprs into
-        /// and get some result out; we can't simplify them.
-        Expr::PrimFunc(..) => Ok(e.clone()),
-
-        /// EvaluatedBlocks have already been evaluated, so no need to do more:
-        Expr::EvaluatedBlock(..) => Ok(e.clone()),
+        Expr::Undefined => Ok(expression_from!{e, EvaluatedExpr::Undefined}),
 
         /// Variables: replace these with the Expresssion on scope that the
         /// variable points to. Assume anything on scope is already simplified
@@ -60,10 +53,10 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
         /// Func declarations: we want to store the scope that they are seen in
         /// against the function so that it can be applied against the right things.
         /// otherwise, leave as is.
-        Expr::Func{ ref inputs, ref output, .. } => {
+        Expr::Func{ ref inputs, ref output } => {
 
             Ok(expression_from!{e,
-                Expr::Func{
+                EvaluatedExpr::Func{
                     inputs: inputs.clone(),
                     output: output.clone(),
                     scope: scope.clone()
@@ -76,20 +69,20 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
         /// access can be chained.
         Expr::Accessed{ ref expression, ref access } => {
 
-            let mut curr: Expression = eval(expression, scope.clone(), context)?;
+            let mut curr: EvaluatedExpression = eval(expression, scope.clone(), context)?;
 
             for arg in access {
                 match *arg {
 
                     Accessor::Property{ ref name } => {
 
-                        if let Expr::EvaluatedBlock(ref b) = curr.clone().expr {
-                            match b.block.scope.get(name) {
+                        if let EvaluatedExpr::Block(ref block) = curr.clone().expr {
+                            match block.scope.get(name) {
                                 Some(val) => {
                                     curr = val.clone();
                                 },
                                 None => {
-                                    curr = Expression::new(Expr::Undefined);
+                                    curr = EvaluatedExpression::new(EvaluatedExpr::Undefined);
                                 }
                             }
                         } else {
@@ -106,11 +99,11 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
                         }
 
                         match curr.clone().expr {
-                            Expr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
+                            EvaluatedExpr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
 
                                 // if too few args provided, set rest to undefined:
                                 while arg_names.len() > simplified_args.len() {
-                                    simplified_args.push( Expression::new(Expr::Undefined) );
+                                    simplified_args.push( EvaluatedExpression::new(EvaluatedExpr::Undefined) );
                                 }
 
                                 // complain if too many args are provided:
@@ -131,7 +124,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
                                 curr = eval(func_e, scope.push(function_scope), context)?;
 
                             },
-                            Expr::PrimFunc(ref func) => {
+                            EvaluatedExpr::PrimFunc(ref func) => {
 
                                 // primitive func? just run it on the args then!
                                 curr = match func.0(&simplified_args, context) {
@@ -172,15 +165,13 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Res {
             else if selector.starts_with(keyframes_str) { ty = BlockType::Keyframes; selector = selector.replacen(keyframes_str,"",1); }
             else if selector.starts_with(fontface_str) { ty = BlockType::FontFace; selector = selector.replacen(fontface_str,"",1); }
 
-            Ok(expression_from![e, Expr::EvaluatedBlock(EvaluatedBlock{
+            Ok(expression_from![e, EvaluatedExpr::Block(EvaluatedBlock{
                 ty: ty,
                 start: e.start,
                 end: e.end,
-                block: Block{
-                    scope: block_scope,
-                    selector: selector,
-                    css: css
-                }
+                scope: block_scope,
+                selector: selector,
+                css: css
             })])
 
         },
@@ -201,7 +192,6 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
             Expr::Bool(..) => {},
             Expr::Unit(..) => {},
             Expr::Undefined => {},
-            Expr::PrimFunc(..) => {},
             Expr::If{ ref cond, ref then, ref otherwise } => {
                 get_dependencies_of(cond, search, out);
                 get_dependencies_of(then, search, out);
@@ -231,8 +221,7 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                 let search = get_dependencies_of_scope(&block.scope, &search.clone(), out);
                 get_dependencies_of_cssbits(&block.selector, &search, out);
                 get_dependencies_of_cssentries(&block.css, &search, out);
-            },
-            Expr::EvaluatedBlock(..) => {}
+            }
         };
     }
     fn get_dependencies_of_scope(scope: &HashMap<String,Expression>, search: &HashSet<String>, out: &mut HashSet<String>) -> HashSet<String> {
@@ -275,9 +264,9 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
 /// Given a map of dependencies (var name -> Expression + var deps), return a map of evaluated expressions,
 /// or if a cycle is detected which prevents proper evaluation, an error.
 type Dependencies<'a> = HashMap<String,(&'a Expression,HashSet<String>)>;
-fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
+fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) -> Result<HashMap<String,EvaluatedExpression>,Error> {
 
-    fn do_simplify(key: &String, last: &Vec<String>, deps: &Dependencies, scope: &Scope, context: &Context, out: &mut HashMap<String,Expression>) -> Result<(),Error> {
+    fn do_simplify(key: &String, last: &Vec<String>, deps: &Dependencies, scope: &Scope, context: &Context, out: &mut HashMap<String,EvaluatedExpression>) -> Result<(),Error> {
 
         if out.contains_key(key) { return Ok(()); }
 
@@ -309,7 +298,7 @@ fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) 
 
 }
 
-fn simplify_block_scope(block_scope: &HashMap<String,Expression>, scope: &Scope, context: &Context) -> Result<HashMap<String,Expression>,Error> {
+fn simplify_block_scope(block_scope: &HashMap<String,Expression>, scope: &Scope, context: &Context) -> Result<HashMap<String,EvaluatedExpression>,Error> {
 
     // work out what each variable on scope depends on, so that we know which order to simplify them in in order
     // to ensure that each variable has in its scope a simplified version of everything it depends on.
@@ -343,7 +332,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
             CSSEntry::Expr(ref expr) => {
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
-                    Expr::EvaluatedBlock(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
+                    EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
                     _ => return err!(css_expr, NotACSSBlock)
                 };
             },

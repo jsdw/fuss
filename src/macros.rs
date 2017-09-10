@@ -26,7 +26,7 @@ macro_rules! naked_err {
 macro_rules! expression_from {
     ($e:ident, $expr:expr) => ({
         use types::*;
-        Expression::with_position($e.start, $e.end, $expr)
+        ExpressionOuter::with_position($e.start, $e.end, $expr)
     })
 }
 
@@ -40,7 +40,7 @@ macro_rules! scope {
         let mut map = HashMap::new();
         $(
             map.insert($key.to_owned(),
-                Expression::new(Expr::PrimFunc(PrimFunc($func)))
+                ExpressionOuter::new(EvaluatedExpr::PrimFunc(PrimFunc($func)))
             );
         )*
         Scope::from(map)
