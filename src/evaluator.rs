@@ -154,8 +154,14 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             let new_scope = scope.push(block_scope.clone());
 
             let css = try_eval_cssentries(&block.css, &new_scope, context)?;
-            let mut selector = try_cssbits_to_string(&block.selector, &new_scope, context)?;
+            let selector = try_cssbits_to_string(&block.selector, &new_scope, context)?;
             let mut ty = BlockType::Generic;
+
+            // trim unnecessary spacing and newlines from within selector:
+            let mut selector = selector
+                .split(|c| c == ' ' || c == '\n')
+                .filter(|s| s.len() > 0)
+                .collect::<Vec<_>>().join(" ");
 
             let media_str = "@media ";
             let keyframes_str = "@keyframes ";
