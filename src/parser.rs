@@ -59,7 +59,7 @@ impl_rdp! {
 
         // different types of expression, plus infix ops in reverse precedence order:
         expression = {
-            { undefined | string | boolean | unit | if_then_else | function | prefix_application | accessible | block }
+            { function | if_then_else | block | undefined | string | boolean | unit | prefix_application | accessible }
             infix0 = { n~ infix0_op ~n }
             infix1 = { n~ infix1_op ~n }
             infix2 = { n~ infix2_op ~n }
@@ -80,7 +80,7 @@ impl_rdp! {
 
         // anything that can be accessed; look for trailing access stuff when parsing it; either .prop or (args)
         // strict on spaces to prevent collision with css selectors like .hello.there on new lines
-        accessible = @{ (paren_expression | variable) ~ access? }
+        accessible = @{ (paren_expression | maybe_naked_variable) ~ access? }
             access = @{ (property_access | function_access)+ }
                 property_access = @{ ["."] ~ variable_name }
                 function_access = @{ ["("] ~ function_access_args ~ [")"] }
@@ -88,7 +88,8 @@ impl_rdp! {
                         function_arg = { expression }
 
         // a version of accessing only for variables, for use in css bits:
-        variable_accessor = { !paren_expression ~ accessible }
+        variable_accessor = { accessible_css }
+            accessible_css = { variable ~ access? }
 
         // prefix application eg !$hello or -2
         prefix_application = @{ prefix_application_fn ~ prefix_application_arg }
@@ -104,10 +105,10 @@ impl_rdp! {
 
             block_expression = { (variable_accessor | block) ~ END }
             block_interpolated_expression = !@{ ["${"] ~n~ expression ~n~ ["}"] }
-            block_assignment = { block_variable_assign ~n~ expression ~ END }
+            block_assignment = { block_variable_assign ~n~ expression ~n~ (([";"] ~ n) | &["}"] | eoi) }
                 block_variable_assign = @{ variable ~ [":"] }
 
-            block_css = { block_css_key ~ [":"] ~n~ block_css_value ~ END }
+            block_css = { block_css_key ~ [":"] ~n~ block_css_value ~n~ (([";"] ~ n) | &["}"]) }
             block_selector = @{ ( block_interpolated_expression | block_selector_chars )* }
                 block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
 
@@ -119,6 +120,7 @@ impl_rdp! {
         // any expression can also exist in parentheses:
         paren_expression = { ["("] ~n~ expression ~n~ [")"] }
 
+        maybe_naked_variable = @{ ["$"]? ~ variable_name }
         variable = @{ ["$"] ~ variable_name }
         if_then_else = { ["if"] ~n~ expression ~n~ ["then"] ~n~ expression ~n~ ["else"] ~n~ expression }
 
@@ -141,7 +143,7 @@ impl_rdp! {
 
         // is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
         // , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
-        END = _{ whitespace* ~ (([";"] | N | eoi) ~ n | &["}"]) }
+        END = _{ whitespace* ~ ((n ~ [";"] | N | n ~ eoi) ~ n | &["}"]) }
 
         // matches but does not expect a newline:
         n = _{ (["\r"] | ["\n"] | whitespace)* }
@@ -171,7 +173,7 @@ impl_rdp! {
                 expression,
             (_:paren_expression, expression: _expression()) =>
                 expression,
-            (_:variable_accessor, expression:_expression()) =>
+            (_:variable_accessor, expression: _expression()) =>
                 expression,
             // infix precedence parsing:
             (rule:infix0, expr:_infix()) =>
@@ -195,9 +197,13 @@ impl_rdp! {
                 expression(rule, expr),
             (rule:accessible, expr:_accessible()) =>
                 expression(rule, expr),
+            (rule:accessible_css, expr:_accessible()) =>
+                expression(rule, expr),
             (rule:block, expr:_block()) =>
                 expression(rule, expr),
             (rule:variable, &var:variable_name) =>
+                expression(rule, Expr::Var(var.to_owned())),
+            (rule:maybe_naked_variable, &var:variable_name) =>
                 expression(rule, Expr::Var(var.to_owned())),
             // primitives:
             (rule:string, &s:string_contents) =>
@@ -847,6 +853,7 @@ mod test {
         "{ hello: there; }" => block[];
         "{ ${ $hello }: there; }" => block[];
         "{ ${ $hello }: the${ 2px }re; }" => block[];
+        "{ border: $a.b.c }" => expression[];
     }
 
     process_test!{test_empty_block_e;
@@ -964,6 +971,20 @@ mod test {
                             }
                         ]
                     })))
+                ]
+            }));
+        "{ border: $o.width; }" =>
+            e(Expr::Block(Block{
+                scope: hash_map![],
+                selector: vec![],
+                css: vec![
+                    CSSEntry::KeyVal{
+                        key: vec![CSSBit::Str(s("border"))],
+                        val: vec![CSSBit::Expr(app(
+                            var("o"),
+                            vec![ a_prop("width") ]
+                        ))]
+                    },
                 ]
             }));
         "{ .hello { a:1; }; .another { b:1; }; }" =>

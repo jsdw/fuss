@@ -4,10 +4,10 @@
     $b: $a;
     $c: $a.b;
 
-    $other: $import("other")
-    $other2: $import("../full/../full/other.fuss")
-    $hello: ($a) => $a + 2px
-    $fn: ($a) => .hi { background-color: $a; }
+    $other: $import("other");
+    $other2: $import("../full/../full/other.fuss");
+    $hello: ($a) => $a + 2px;
+    $fn: ($a) => .hi { background-color: $a; };
     $block: {
         $a: .hello.there {
             color: red;
@@ -16,16 +16,16 @@
         $b: .another.there {
             color: blue;
         }
-    }; /* optional semi-colon */
+    };
 
     $padding: 5px;
     $mixin: ($a) =>
         ${ $a }-class {
             color: red;
-        }
+        };
 
-    $mixin("-moz")
-    $mixin("-webkit")
+    $mixin("-moz");
+    $mixin("-webkit");
 
     .more .bits {
         color: red;
@@ -44,18 +44,18 @@
             {
                 one: 1;
                 two: 2;
-                three: 3;
+                three: 3
             }
             {
                 four: 4;
                 five: 5;
-                six: 6;
+                six: 6
             }
             { seven: 7; eight: 8 }
 
             &.and-this {
                 nine: 9;
-                ten: 10;
+                ten: 10
             }
         }
 
@@ -68,16 +68,16 @@
     }
     .hello {
         another: ${ $hello(1px) };
-        $fn(2px)
+        $fn(2px);
     }
 
     @font-face {
         some-font-lark: inner;
     }
 
-    $fn(400px)
-    $block.a; /* semi-colons are optional */
-    $block.b
+    $fn(400px);
+    $block.a;
+    $block.b;
 
     @keyframes my-animation {
         from { hello: 2px; }

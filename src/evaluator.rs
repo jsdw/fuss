@@ -329,7 +329,16 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
             }
         }
     }
-    Ok(string.concat().trim().to_owned())
+
+    // trim unnecessary spacing and newlines from CSS value:
+    let string = string
+        .concat()
+        .trim()
+        .split(|c| c == ' ' || c == '\n')
+        .filter(|s| s.len() > 0)
+        .collect::<Vec<_>>().join(" ");
+
+    Ok(string)
 }
 fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context) -> Result<Vec<EvaluatedCSSEntry>,Error> {
     let mut out = vec![];
