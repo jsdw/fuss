@@ -101,16 +101,17 @@ impl_rdp! {
 
             block_open = { ["{"] }
             block_inner = _{ (block_assignment | block_css | block_expression)* }
+            block_end_stmt = _{ n ~ (([";"] ~ n) | &["}"] | eoi) }
             block_close = { ["}"] }
 
             block_expression = { (variable_accessor | block) ~ END }
             block_interpolated_expression = !@{ ["${"] ~n~ expression ~n~ ["}"] }
-            block_assignment = { block_variable_assign ~n~ expression ~n~ (([";"] ~ n) | &["}"] | eoi) }
+            block_assignment = { block_variable_assign ~n~ expression ~ block_end_stmt }
                 block_variable_assign = @{ variable ~ [":"] }
 
-            block_css = { block_css_key ~ [":"] ~n~ block_css_value ~n~ (([";"] ~ n) | &["}"]) }
+            block_css = { block_css_key ~ [":"] ~n~ block_css_value ~ block_end_stmt }
             block_selector = @{ ( block_interpolated_expression | block_selector_chars )* }
-                block_selector_chars = @{ ( !(["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
+                block_selector_chars = @{ ( !((["\n"] ~ ["\n"]) | (["("] ~n~ ["{"]) | ["$"] | ["{"] | [";"] | ["}"]) ~ any )+ }
 
             block_css_key = @{ (block_interpolated_expression | block_css_key_chars)+ }
                 block_css_key_chars = @{ ( ['a'..'z'] | ["-"] )+ }
@@ -143,7 +144,7 @@ impl_rdp! {
 
         // is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
         // , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
-        END = _{ whitespace* ~ ((n ~ [";"] | N | n ~ eoi) ~ n | &["}"]) }
+        END = _{ (n ~ [";"] ~n) | N | (n ~ eoi) | (n ~ &["}"]) }
 
         // matches but does not expect a newline:
         n = _{ (["\r"] | ["\n"] | whitespace)* }
