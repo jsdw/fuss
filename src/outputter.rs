@@ -145,24 +145,39 @@ fn merge_css_selector(mut selector: Vec<String>) -> String {
 
     selector.reverse();
 
-    let mut current = match selector.pop() {
-        Some(val) => val,
+    let mut current: Vec<String> = match selector.pop() {
+        Some(val) => val.split(',').map(|s| s.trim().to_owned()).collect(),
         None => return String::new()
     };
 
     while let Some(next) = selector.pop() {
 
-        // replace and '&'s in a selector with the previous, if any exist.
-        // else, just append selectors separated by a space.
-        if next.contains('&') {
-            current = next.replace('&', &current);
-        } else {
-            current.push(' ');
-            current.push_str(&next);
+        let mut new_current = vec![];
+
+        // if we have multiple selectors separated by ",",
+        // apply each one independently to each selector we have so far.
+        for next in next.split(',').map(|s| s.trim()) {
+
+            for mut curr in current.iter().cloned() {
+
+                // replace and '&'s in a selector with the previous, if any exist.
+                // else, just append selectors separated by a space.
+                if next.contains('&') {
+                    curr = next.replace('&', &curr)
+                } else {
+                    curr.push(' ');
+                    curr.push_str(next);
+                }
+                new_current.push(curr);
+
+            }
+
         }
+        current = new_current;
+
     }
 
-    current
+    current.join(", ")
 }
 
 #[derive(Clone,PartialEq,Debug)]
