@@ -16,6 +16,9 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
         /// unit eg 12px, 100%, 30
         Expr::Unit(n, ref unit) => Ok(expression_from!{e, EvaluatedExpr::Unit(n,unit.clone())}),
 
+        /// colour
+        Expr::Colour(ref col) => Ok(expression_from!{e, EvaluatedExpr::Colour(col.clone())}),
+
         /// undefined
         Expr::Undefined => Ok(expression_from!{e, EvaluatedExpr::Undefined}),
 
@@ -197,6 +200,7 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
             Expr::Str(..) => {},
             Expr::Bool(..) => {},
             Expr::Unit(..) => {},
+            Expr::Colour(..) => {},
             Expr::Undefined => {},
             Expr::If{ ref cond, ref then, ref otherwise } => {
                 get_dependencies_of(cond, search, out);

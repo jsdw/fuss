@@ -26,6 +26,24 @@ pub enum CSSBit {
     Expr(Expression)
 }
 
+/// Colour
+#[derive(PartialEq,Debug,Clone)]
+pub struct Colour {
+    red: f32,
+    green: f32,
+    blue: f32,
+    alpha: f32
+}
+impl Colour {
+    pub fn RGBA(red: f32, green: f32, blue: f32, alpha: f32) -> Colour {
+        Colour{red,green,blue,alpha}
+    }
+    pub fn red(&self) -> f32 { self.red }
+    pub fn green(&self) -> f32 { self.green }
+    pub fn blue(&self) -> f32 { self.blue }
+    pub fn alpha(&self) -> f32 { self.alpha }
+}
+
 /// Evaluated blocks and their parts
 #[derive(PartialEq,Debug,Clone)]
 pub struct EvaluatedBlock {
@@ -60,6 +78,8 @@ pub enum Expr {
     Bool(bool),
     /// unit eg 12px, 100%, 30
     Unit(f64, String),
+    /// Colour eg #ff0033
+    Colour(Colour),
     /// undefined
     Undefined,
     /// A function eg ($a, $b) => $a + $b
@@ -81,6 +101,7 @@ pub enum EvaluatedExpr {
     Str(String),
     Bool(bool),
     Unit(f64, String),
+    Colour(Colour),
     Undefined,
     /// A primitive function; these only show up in Scope and so are always pre-evaluated
     PrimFunc(PrimFunc),

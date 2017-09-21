@@ -2,6 +2,7 @@ pub mod ops;
 pub mod casting;
 pub mod import;
 pub mod blocks;
+pub mod colour;
 
 use types::*;
 
@@ -25,7 +26,8 @@ fn get_prelude() -> Scope {
         "to_boolean" => casting::boolean;
         "to_string" => casting::string;
         "import" => import::import;
-        "merge" => blocks::merge
-
+        "merge" => blocks::merge;
+        "rgba" => colour::rgba;
+        "rgb" => colour::rgba
     }
 }

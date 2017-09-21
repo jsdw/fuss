@@ -26,9 +26,16 @@ pub fn string(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
 pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorType> {
     match *e {
-        EvaluatedExpr::Str(ref s) => Ok(s.to_owned()),
-        EvaluatedExpr::Bool(ref b) => Ok(if *b { "true".to_owned() } else { "false".to_owned() }),
-        EvaluatedExpr::Unit(ref num, ref suffix) => Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0').trim_right_matches('.'),suffix}),
+        EvaluatedExpr::Str(ref s) =>
+            Ok(s.to_owned()),
+        EvaluatedExpr::Bool(ref b) =>
+            Ok(if *b { "true".to_owned() } else { "false".to_owned() }),
+        EvaluatedExpr::Unit(ref num, ref suffix) =>
+            Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0').trim_right_matches('.'),suffix}),
+        EvaluatedExpr::Colour(ref col) => {
+            let val = |n| (n * 255f32) as u8;
+            Ok(format!["rgba({},{},{},{})", val(col.red()), val(col.green()), val(col.blue()), col.alpha()])
+        },
         _ => Err(ErrorType::InvalidExpressionInCssValue(Box::new(e.to_owned())))
     }
 }
