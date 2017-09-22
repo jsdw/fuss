@@ -29,19 +29,19 @@ pub enum CSSBit {
 /// Colour
 #[derive(PartialEq,Debug,Clone)]
 pub struct Colour {
-    red: f32,
-    green: f32,
-    blue: f32,
-    alpha: f32
+    red: f64,
+    green: f64,
+    blue: f64,
+    alpha: f64
 }
 impl Colour {
-    pub fn RGBA(red: f32, green: f32, blue: f32, alpha: f32) -> Colour {
+    pub fn RGBA(red: f64, green: f64, blue: f64, alpha: f64) -> Colour {
         Colour{red,green,blue,alpha}
     }
-    pub fn red(&self) -> f32 { self.red }
-    pub fn green(&self) -> f32 { self.green }
-    pub fn blue(&self) -> f32 { self.blue }
-    pub fn alpha(&self) -> f32 { self.alpha }
+    pub fn red(&self) -> f64 { self.red }
+    pub fn green(&self) -> f64 { self.green }
+    pub fn blue(&self) -> f64 { self.blue }
+    pub fn alpha(&self) -> f64 { self.alpha }
 }
 
 /// Evaluated blocks and their parts

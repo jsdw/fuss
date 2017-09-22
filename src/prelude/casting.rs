@@ -33,8 +33,8 @@ pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorType> {
         EvaluatedExpr::Unit(ref num, ref suffix) =>
             Ok(format!{"{}{}", format!{"{:.5}",num}.trim_right_matches('0').trim_right_matches('.'),suffix}),
         EvaluatedExpr::Colour(ref col) => {
-            let val = |n| (n * 255f32) as u8;
-            Ok(format!["rgba({},{},{},{})", val(col.red()), val(col.green()), val(col.blue()), col.alpha()])
+            let val = |n: f64| (n * 255.0).round();
+            Ok(format!["rgba({:.0},{:.0},{:.0},{})", val(col.red()), val(col.green()), val(col.blue()), col.alpha()])
         },
         _ => Err(ErrorType::InvalidExpressionInCssValue(Box::new(e.to_owned())))
     }

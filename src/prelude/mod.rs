@@ -28,6 +28,8 @@ fn get_prelude() -> Scope {
         "import" => import::import;
         "merge" => blocks::merge;
         "rgba" => colour::rgba;
-        "rgb" => colour::rgba
+        "rgb" => colour::rgba;
+        "hsla" => colour::hsla;
+        "hsl" => colour::hsla
     }
 }
