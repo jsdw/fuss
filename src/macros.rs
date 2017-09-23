@@ -32,7 +32,7 @@ macro_rules! expression_from {
 
 /// make it a little easier to build up a scope of primitive functions
 macro_rules! scope {
-    ( $($key:expr => $func:expr);+ ) => ({
+    ( $($key:expr => $item:expr);+ ) => ({
 
         use std::collections::HashMap;
         use types::Scope;
@@ -40,7 +40,7 @@ macro_rules! scope {
         let mut map = HashMap::new();
         $(
             map.insert($key.to_owned(),
-                ExpressionOuter::new(EvaluatedExpr::PrimFunc(PrimFunc($func)))
+                ExpressionOuter::new($item)
             );
         )*
         Scope::from(map)

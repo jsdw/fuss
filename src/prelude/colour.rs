@@ -45,8 +45,7 @@ pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
         alpha = alpha / 100.0;
     }
 
-    let clamp = |n: f64| n.min(1.0).max(0.0);
-    Ok(EvaluatedExpr::Colour(Colour::RGBA(clamp(red),clamp(green),clamp(blue),clamp(alpha))))
+    Ok(EvaluatedExpr::Colour(Colour::RGBA(red, green, blue, alpha)))
 
 }
 
@@ -69,9 +68,9 @@ pub fn hsla<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
         }
     };
 
-    let (mut hue,   hue_unit)   = get_number(&args[0])?;
-    let (mut sat,   sat_unit)   = get_number(&args[1])?;
-    let (mut light, light_unit) = get_number(&args[2])?;
+    let (hue,   hue_unit)   = get_number(&args[0])?;
+    let (sat,   sat_unit)   = get_number(&args[1])?;
+    let (light, light_unit) = get_number(&args[2])?;
     let (mut alpha, alpha_unit) = if args.len() > 3 { get_number(&args[3])? } else { (1.0,"") };
 
     if hue_unit != "" && hue_unit != "deg" {
@@ -87,34 +86,6 @@ pub fn hsla<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
         alpha = alpha / 100.0;
     }
 
-    let clamp = |n: f64| n.min(1.0).max(0.0);
+    Ok(EvaluatedExpr::Colour(Colour::HSLA(hue, sat/100.0, light/100.0, alpha)))
 
-    hue   = ((hue % 360.0) / 60.0).min(60.0).max(0.0);
-    sat   = clamp(sat / 100.0);
-    light = clamp(light / 100.0);
-    alpha = clamp(alpha);
-
-    let (r,g,b) = hsl_to_rgb(hue,sat,light);
-    Ok(EvaluatedExpr::Colour(Colour::RGBA(clamp(r),clamp(g),clamp(b),alpha)))
-
-}
-
-// From https://www.w3.org/TR/css-color-4/#hsl-to-rgb
-// assumes hue is in [0,6) and s/l are in [0,1]
-// outputs rgb in range [0,1]
-//
-fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (f64,f64,f64) {
-    let t2 = if l <= 0.5 { l * (s + 1.0) } else { l + s - (l * s) };
-    let t1 = l * 2.0 - t2;
-    ( hue_to_rgb(t1,t2,h+2.0), hue_to_rgb(t1,t2,h), hue_to_rgb(t1,t2,h-2.0) )
-}
-
-fn hue_to_rgb(t1: f64, t2: f64, mut hue: f64) -> f64 {
-    if hue < 0.0 { hue += 6.0; }
-    if hue >= 6.0 { hue -= 6.0; }
-
-    if      hue < 1.0 { (t2 - t1) * hue + t1 }
-    else if hue < 3.0 { t2 }
-    else if hue < 4.0 { (t2 - t1) * (4.0 - hue) + t1 }
-    else              { t1 }
 }

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
+use types::colour;
 
 /// Unevaluated blocks and their parts
 #[derive(PartialEq,Debug,Clone)]
@@ -24,24 +25,6 @@ pub enum CSSEntry {
 pub enum CSSBit {
     Str(String),
     Expr(Expression)
-}
-
-/// Colour
-#[derive(PartialEq,Debug,Clone)]
-pub struct Colour {
-    red: f64,
-    green: f64,
-    blue: f64,
-    alpha: f64
-}
-impl Colour {
-    pub fn RGBA(red: f64, green: f64, blue: f64, alpha: f64) -> Colour {
-        Colour{red,green,blue,alpha}
-    }
-    pub fn red(&self) -> f64 { self.red }
-    pub fn green(&self) -> f64 { self.green }
-    pub fn blue(&self) -> f64 { self.blue }
-    pub fn alpha(&self) -> f64 { self.alpha }
 }
 
 /// Evaluated blocks and their parts
@@ -79,7 +62,7 @@ pub enum Expr {
     /// unit eg 12px, 100%, 30
     Unit(f64, String),
     /// Colour eg #ff0033
-    Colour(Colour),
+    Colour(colour::Colour),
     /// undefined
     Undefined,
     /// A function eg ($a, $b) => $a + $b
@@ -101,7 +84,7 @@ pub enum EvaluatedExpr {
     Str(String),
     Bool(bool),
     Unit(f64, String),
-    Colour(Colour),
+    Colour(colour::Colour),
     Undefined,
     /// A primitive function; these only show up in Scope and so are always pre-evaluated
     PrimFunc(PrimFunc),
