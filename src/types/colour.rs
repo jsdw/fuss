@@ -31,9 +31,12 @@ impl Colour {
     }
 
     /// A handy utility func to define standard colours.
+    #[allow(non_snake_case)]
     pub fn RGB_u8(red: u8, green: u8, blue: u8) -> Colour {
         Self::RGBA_u8(red,green,blue,255)
     }
+
+    #[allow(non_snake_case)]
     pub fn RGBA_u8(red: u8, green: u8, blue: u8, alpha: u8) -> Colour {
         Self::RGBA((red as f64)/255.0, (green as f64)/255.0, (blue as f64)/255.0, (alpha as f64)/255.0)
     }
@@ -61,14 +64,18 @@ impl Colour {
 
         let mut expanded = String::new();
 
-        if hex.len() == 3 || hex.len() == 4 {
+        if hex.len() == 3 {
+            for c in hex.chars() { expanded.push(c); expanded.push(c) }
+            expanded.push_str("ff")
+        }
+        else if hex.len() == 4 {
             for c in hex.chars() { expanded.push(c); expanded.push(c) }
         }
-        else if(hex.len() == 6) {
+        else if hex.len() == 6 {
             expanded.push_str(hex);
             expanded.push_str("ff");
         }
-        else if(hex.len() == 8) {
+        else if hex.len() == 8 {
             expanded.push_str(hex);
         }
         else {

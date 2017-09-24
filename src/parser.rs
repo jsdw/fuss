@@ -139,7 +139,8 @@ impl_rdp! {
             escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"]) }
 
         colour = { ["#"] ~ hex_value }
-            hex_value = { (['a'..'z'] | ['A'..'Z'] | ['0'..'9'])+ }
+            hex_value = { hex ~ hex ~ hex ~ (hex ~ hex ~ hex ~ hex ~ hex | hex ~ hex ~ hex | hex)? }
+            hex = _{ ['a'..'z'] | ['A'..'Z'] | ['0'..'9'] }
 
         unit = @{ number ~ number_suffix }
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
@@ -684,6 +685,14 @@ mod test {
         "100.0px" => expression[];
         "100.0em" => expression[];
         "0%" => expression[];
+    }
+
+    parse_test!{text_colour_hex;
+        "#fef" => colour[];
+        "#fef0" => colour[];
+        "#123456" => colour[];
+        "#12345678" => colour[];
+        "#09afAF" => colour[];
     }
 
     process_test!{test_number_e;
