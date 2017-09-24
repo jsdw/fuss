@@ -146,6 +146,9 @@ mod test {
     fn hsl(h:i64,s:i64,l:i64) -> Colour {
         Colour::HSLA((h as f64),(s as f64)/100.0,(l as f64)/100.0,1.0)
     }
+    fn hex(val:&str) -> Colour {
+        Colour::from_hex_str(val).expect(&*format!["{} is not a valid colour hex code", val])
+    }
 
     #[test]
     fn rgb_vs_hsl() {
@@ -163,6 +166,40 @@ mod test {
             assert_eq!(c1_bits, c2_bits);
         }
 
+    }
+
+    #[test]
+    fn rgb_vs_hex() {
+        let cols = vec![
+            ( rgb(0, 191, 255),   hex("00Bfff")   ),
+            ( rgb(255, 0, 0),     hex("f00")      ),
+            ( rgb(255, 0, 0),     hex("fF0000ff") ),
+            ( rgb(255, 0, 255),   hex("FF00ff")   ),
+            ( rgb(0, 255, 0),     hex("0f0f")     ),
+            ( rgb(140, 115, 115), hex("8c7373")   ),
+            ( rgb(0, 0, 0),       hex("000")      )
+        ];
+
+        for (c1,c2) in cols {
+            let c1_bits = ( c1.red_u8(), c1.green_u8(), c1.blue_u8() );
+            let c2_bits = ( c2.red_u8(), c2.green_u8(), c2.blue_u8() );
+            assert_eq!(c1_bits, c2_bits);
+        }
+
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_hex() {
+        // wrong lengths:
+        hex("00Bff3ff0");
+        hex("00Bff");
+        hex("0f");
+        hex("f");
+
+        // non-hex values:
+        hex("ffg");
+        hex("g00");
     }
 
 }
