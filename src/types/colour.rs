@@ -10,6 +10,15 @@ pub struct Colour {
 
 impl Colour {
 
+    pub fn transparent() -> Colour {
+        Colour{
+            red: 0.0,
+            green: 0.0,
+            blue: 0.0,
+            alpha: 0.0
+        }
+    }
+
     /// RGBA takes in red, green, blue and alpha values in the range [0,1]
     #[allow(non_snake_case)]
     pub fn RGBA(red: f64, green: f64, blue: f64, alpha: f64) -> Colour {
@@ -23,7 +32,10 @@ impl Colour {
 
     /// A handy utility func to define standard colours.
     pub fn RGB_u8(red: u8, green: u8, blue: u8) -> Colour {
-        Self::RGBA((red as f64)/255.0, (green as f64)/255.0, (blue as f64)/255.0, 1.0)
+        Self::RGBA_u8(red,green,blue,255)
+    }
+    pub fn RGBA_u8(red: u8, green: u8, blue: u8, alpha: u8) -> Colour {
+        Self::RGBA((red as f64)/255.0, (green as f64)/255.0, (blue as f64)/255.0, (alpha as f64)/255.0)
     }
 
     /// HSLA takes in a hue in degrees, and saturation, lightness and alpha in [0,1]
@@ -37,6 +49,46 @@ impl Colour {
         let (r,g,b) = hsl_to_rgb(hue,saturation,lightness);
         Self::RGBA(r,g,b,alpha)
 
+    }
+
+    // take a hex string and make a colour from it if it is valid.
+    // "12a" expands to "1122aaff"
+    // "12af" expands to "1122aaff"
+    // "1122aa" expadns to "1122aaff"
+    // "1122aaff" does not need to expand.
+    // all other lengths, and non hex values, are invalid and return None.
+    pub fn from_hex_str(hex: &str) -> Option<Colour> {
+
+        let mut expanded = String::new();
+
+        if hex.len() == 3 || hex.len() == 4 {
+            for c in hex.chars() { expanded.push(c); expanded.push(c) }
+        }
+        else if(hex.len() == 6) {
+            expanded.push_str(hex);
+            expanded.push_str("ff");
+        }
+        else if(hex.len() == 8) {
+            expanded.push_str(hex);
+        }
+        else {
+            return None;
+        }
+
+        let r = &expanded[0..2];
+        let g = &expanded[2..4];
+        let b = &expanded[4..6];
+        let a = &expanded[6..8];
+
+        let to_u8 = |c| u8::from_str_radix(c,16);
+        match (to_u8(r),to_u8(g),to_u8(b),to_u8(a)) {
+            (Ok(r),Ok(g),Ok(b),Ok(a)) => {
+                Some(Self::RGBA_u8(r,g,b,a))
+            }
+            _ => {
+                None
+            }
+        }
     }
 
     pub fn red(&self)   -> f64 { self.red }

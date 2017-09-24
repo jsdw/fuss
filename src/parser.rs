@@ -59,7 +59,7 @@ impl_rdp! {
 
         // different types of expression, plus infix ops in reverse precedence order:
         expression = {
-            { function | if_then_else | block | undefined | string | boolean | unit | prefix_application | accessible }
+            { function | if_then_else | block | undefined | string | boolean | colour | unit | prefix_application | accessible }
             infix0 = { n~ infix0_op ~n }
             infix1 = { n~ infix1_op ~n }
             infix2 = { n~ infix2_op ~n }
@@ -138,6 +138,9 @@ impl_rdp! {
             string_contents = { (escaped_char | !(["\""] | ["\\"]) ~ any)* }
             escaped_char  =  _{ ["\\"] ~ (["\""] | ["\\"]) }
 
+        colour = { ["#"] ~ hex_value }
+            hex_value = { (['a'..'z'] | ['A'..'Z'] | ['0'..'9'])+ }
+
         unit = @{ number ~ number_suffix }
             number = @{ ["-"]? ~ (["0"] | ['1'..'9'] ~ ['0'..'9']*) ~ ( ["."] ~ ['0'..'9']+ )? }
             number_suffix = @{ (['a'..'z']+ | ["%"])? }
@@ -215,6 +218,8 @@ impl_rdp! {
                 expression(rule, Expr::Bool(true)),
             (rule:boolean, _:boolean_false) =>
                 expression(rule, Expr::Bool(false)),
+            (rule:colour, colour:_colour()) =>
+                expression(rule, colour),
             (rule:undefined) =>
                 expression(rule, Expr::Undefined),
         }
@@ -266,6 +271,14 @@ impl_rdp! {
                     cond: cond,
                     then: then,
                     otherwise: otherwise
+                }
+            }
+        }
+        _colour(&self) -> Expr {
+            (&hex:hex_value) => {
+                match Colour::from_hex_str(hex) {
+                    None => Expr::Colour(Colour::transparent()),
+                    Some(col) => Expr::Colour(col)
                 }
             }
         }
