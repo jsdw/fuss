@@ -80,7 +80,7 @@ impl_rdp! {
 
         // anything that can be accessed; look for trailing access stuff when parsing it; either .prop or (args)
         // strict on spaces to prevent collision with css selectors like .hello.there on new lines
-        accessible = @{ (paren_expression | maybe_naked_variable) ~ access? }
+        accessible = @{ (paren_expression | variable | naked_variable) ~ access? }
             access = @{ (property_access | function_access)+ }
                 property_access = @{ ["."] ~ variable_name }
                 function_access = @{ ["("] ~ function_access_args ~ [")"] }
@@ -101,7 +101,7 @@ impl_rdp! {
 
             block_open = { ["{"] }
             block_inner = _{ (block_assignment | block_css | block_expression)* }
-            block_end_stmt = _{ n ~ (([";"] ~ n) | &["}"] | eoi) }
+            block_end_stmt = _{ n ~ &["}"] | eoi | n ~ [";"] ~ n }
             block_close = { ["}"] }
 
             block_expression = { (variable_accessor | block) ~ END }
@@ -121,8 +121,8 @@ impl_rdp! {
         // any expression can also exist in parentheses:
         paren_expression = { ["("] ~n~ expression ~n~ [")"] }
 
-        maybe_naked_variable = @{ ["$"]? ~ variable_name }
         variable = @{ ["$"] ~ variable_name }
+        naked_variable = { variable_name }
         if_then_else = { ["if"] ~n~ expression ~n~ ["then"] ~n~ expression ~n~ ["else"] ~n~ expression }
 
         function = { ["("] ~n~ function_args? ~n~ [")"] ~n~ ["=>"] ~n~ function_expression }
@@ -208,8 +208,8 @@ impl_rdp! {
                 expression(rule, expr),
             (rule:variable, &var:variable_name) =>
                 expression(rule, Expr::Var(var.to_owned(), VarType::User)),
-            (rule:maybe_naked_variable, &var:variable_name) =>
-                expression(rule, Expr::Var(var.to_owned(), VarType::User)),
+            (rule:naked_variable, &var:variable_name) =>
+                expression(rule, Expr::Var(var.to_owned(), VarType::Builtin)),
             // primitives:
             (rule:string, &s:string_contents) =>
                 expression(rule, Expr::Str(escaped_string(s))),
@@ -225,20 +225,20 @@ impl_rdp! {
                 expression(rule, Expr::Undefined),
         }
         _infix(&self) -> Expr {
-            (left:_expression(), sign:_variable_expression(), right:_expression()) => {
+            (left:_expression(), sign:_naked_variable_expression(), right:_expression()) => {
                 Expr::Accessed{
                     expression: sign,
                     access: vec![ Accessor::Function{args:vec![left,right]} ]
                 }
             }
         }
-        _variable_expression(&self) -> Expression {
+        _naked_variable_expression(&self) -> Expression {
             (sign) => {
                 let tok = self.input().slice(sign.start,sign.end);
                 Expression::with_position(
                     Position(sign.start),
                     Position(sign.end),
-                    Expr::Var(tok.to_owned(), VarType::User)
+                    Expr::Var(tok.to_owned(), VarType::Builtin)
                 )
             }
         }
@@ -284,7 +284,7 @@ impl_rdp! {
             }
         }
         _prefix_application(&self) -> Expr {
-            (sign:_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
+            (sign:_naked_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
                 Expr::Accessed{
                     expression: sign,
                     access: vec![ Accessor::Function{args:vec![arg]} ]
@@ -461,6 +461,10 @@ mod test {
 
     fn var(name: &str) -> Expression {
         e(Expr::Var(s(name), VarType::User))
+    }
+
+    fn builtin(name: &str) -> Expression {
+        e(Expr::Var(s(name), VarType::Builtin))
     }
 
     fn b(b: bool) -> Expression {
@@ -794,33 +798,43 @@ mod test {
             );
         "!$hello" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ var("hello") ]
             );
         "!$hello.there" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ app( var("hello"), vec![ a_prop("there") ]) ]
             );
         "!$hello()" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ app( var("hello"), vec![a_fn(vec![])] ) ]
             );
         "!$hello().b" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ app( var("hello"), vec![a_fn(vec![]),a_prop("b")] ) ]
             );
         "!$hello($a)" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ app( var("hello"), vec![ a_fn(vec![var("a")]) ] ) ]
             );
         "$hello.there($a)" =>
             app(
                 var("hello"),
                 vec![ a_prop("there"), a_fn(vec![var("a")]) ]
+            );
+        "builtin_thing($a)" =>
+            app(
+                builtin("builtin_thing"),
+                vec![ a_fn(vec![var("a")]) ]
+            );
+        "builtin_thing(builtin_var)" =>
+            app(
+                builtin("builtin_thing"),
+                vec![ a_fn(vec![builtin("builtin_var")]) ]
             );
         "$hello.there(1px).b" =>
             app(
@@ -839,15 +853,15 @@ mod test {
             );
         "!$hello.there($a)" =>
             op(
-                var("!"),
+                builtin("!"),
                 vec![ app(var("hello"), vec![ a_prop("there"), a_fn(vec![var("a")]) ]) ]
             );
         "!$hello.there($a) + 2px" =>
             op(
-                var("+"),
+                builtin("+"),
                 vec![
                     op(
-                        var("!"),
+                        builtin("!"),
                         vec![ app(var("hello"), vec![ a_prop("there"), a_fn(vec![var("a")]) ]) ]
                     ),
                     unit(2.0, "px")

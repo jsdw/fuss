@@ -4,15 +4,15 @@
     $b: $a;
     $c: $a.b;
 
-    $other: $import("other");
-    $other2: $import("../full/../full/other.fuss");
+    $other: import("other");
+    $other2: import("../full/../full/other.fuss");
     $hello: ($a) => $a + 2px;
     $fn: ($a) => .hi { background-color: $a; };
     $block: {
         $a: .hello.there {
             color: red;
             padding: $c;
-        }
+        };
         $b: .another.there {
             color: blue;
         }
@@ -24,8 +24,8 @@
             color: red;
         };
 
-    $mixin("-moz");
-    $mixin("-webkit");
+    $mixin("-moz")
+    $mixin("-webkit")
 
     .more .bits {
         color: red;
@@ -58,6 +58,9 @@
                 ten: 10
             }
         }
+        .hello.there.and-this {
+            eleven: 11;
+        }
 
     }
     .another {
@@ -87,7 +90,7 @@
     }
 
     .sharks {
-        $other.another
+        $other.another;
         margin: ${ $other.a + $other.b };
     }
 

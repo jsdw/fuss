@@ -1,6 +1,6 @@
 $another: {
     opacity: 0;
-}
+};
 
-$a: 2px
-$b: 3px
+$a: 2px;
+$b: 3px;
