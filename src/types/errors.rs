@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use types::position::Position;
-use types::EvaluatedExpr;
+use types::{EvaluatedExpr,VarType};
 
 /// Error types
 #[derive(Clone,PartialEq,Debug)]
@@ -14,7 +14,7 @@ pub struct Error {
 #[derive(Clone,PartialEq,Debug)]
 pub enum ErrorType {
     NotAValidInnerBlock,
-    CantFindVariable(String),
+    CantFindVariable(String,VarType),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
     WrongTypeOfArguments{message: String},

@@ -207,9 +207,9 @@ impl_rdp! {
             (rule:block, expr:_block()) =>
                 expression(rule, expr),
             (rule:variable, &var:variable_name) =>
-                expression(rule, Expr::Var(var.to_owned())),
+                expression(rule, Expr::Var(var.to_owned(), VarType::User)),
             (rule:maybe_naked_variable, &var:variable_name) =>
-                expression(rule, Expr::Var(var.to_owned())),
+                expression(rule, Expr::Var(var.to_owned(), VarType::User)),
             // primitives:
             (rule:string, &s:string_contents) =>
                 expression(rule, Expr::Str(escaped_string(s))),
@@ -238,7 +238,7 @@ impl_rdp! {
                 Expression::with_position(
                     Position(sign.start),
                     Position(sign.end),
-                    Expr::Var(tok.to_owned())
+                    Expr::Var(tok.to_owned(), VarType::User)
                 )
             }
         }
@@ -460,7 +460,7 @@ mod test {
     }
 
     fn var(name: &str) -> Expression {
-        e(Expr::Var(s(name)))
+        e(Expr::Var(s(name), VarType::User))
     }
 
     fn b(b: bool) -> Expression {

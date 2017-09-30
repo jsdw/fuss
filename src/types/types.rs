@@ -54,6 +54,13 @@ pub enum BlockType {
     Generic
 }
 
+#[derive(PartialEq,Debug,Clone,Copy)]
+pub enum VarType {
+    User,
+    Builtin,
+    Unknown
+}
+
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]
 pub enum Expr {
@@ -72,7 +79,7 @@ pub enum Expr {
     /// An if expression eg if this then 2px else 20%
     If{ cond: Expression, then: Expression, otherwise: Expression },
     /// A variable name eg $hello
-    Var(String),
+    Var(String, VarType),
     /// An expression that's being accessed
     Accessed{ expression: Expression, access: Vec<Accessor> },
     /// A CSS block eg { color: red }, or .some.selector { color: blue }

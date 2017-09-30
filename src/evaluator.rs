@@ -26,10 +26,10 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
         /// variable points to. Assume anything on scope is already simplified
         /// as much as needed (this is important for Funcs, which use a scope
         /// of vars to avoid replacing the func arg uses with other expressions)
-        Expr::Var(ref name) => {
+        Expr::Var(ref name, ty) => {
 
-            scope.find(name).map_or(
-                err!(e,CantFindVariable(name.clone())),
+            scope.find(name, ty).map_or(
+                err!(e,CantFindVariable(name.clone(), ty)),
                 |var| { Ok(var.clone()) }
             )
 
@@ -212,8 +212,8 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                 for i in inputs { search.remove(i); }
                 get_dependencies_of(output, &search, out);
             },
-            Expr::Var(ref name,..) => {
-                if search.contains(name) {
+            Expr::Var(ref name, ty) => {
+                if ty != VarType::Builtin && search.contains(name) {
                     out.insert(name.clone());
                 }
             },
