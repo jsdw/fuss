@@ -1,0 +1,109 @@
+// a file begins as if we are inside a block already, to reduce boilerplate:
+file = { n ~ block_inner ~ n ~ eoi }
+
+// different types of expression, plus infix ops in reverse precedence order:
+expression = {
+    { function | if_then_else | block | undefined | string | boolean | colour | unit | prefix_application | accessible }
+    infix0 = { n~ infix0_op ~n }
+    infix1 = { n~ infix1_op ~n }
+    infix2 = { n~ infix2_op ~n }
+    infix3 = { n~ infix3_op ~n }
+    infix4 = { n~ infix4_op ~n }
+    infix5 = {< n~ infix5_op ~n }
+}
+
+undefined = { "undefined" }
+
+// all of our allowed infix ops:
+infix0_op = { "||" }
+infix1_op = { "&&" }
+infix2_op = { "==" | "!=" | ">=" | "<=" | ">" | "<" }
+infix3_op = { "+" | "-" }
+infix4_op = { "*" | "/" }
+infix5_op = { "^" }
+
+// anything that can be accessed; look for trailing access stuff when parsing it; either .prop or (args)
+// strict on spaces to prevent collision with css selectors like .hello.there on new lines
+accessible = ${ (paren_expression | variable | naked_variable) ~ access? }
+    access = ${ (property_access | function_access)+ }
+        property_access = ${ "." ~ variable_name }
+        function_access = ${ "(" ~ function_access_args ~ ")" }
+            function_access_args = !{ ( function_arg ~n~ ("," ~n~ function_arg)* )? }
+                function_arg = { expression }
+
+// a version of accessing only for variables, for use in css bits:
+variable_accessor = { accessible_css }
+    accessible_css = { variable ~ access? }
+
+// prefix application eg !$hello or -2
+prefix_application = ${ prefix_application_fn ~ prefix_application_arg }
+    prefix_application_fn = { "-" | "!" }
+    prefix_application_arg = !{ undefined | string | boolean | unit | accessible }
+
+// our block types; typically some selector and then contents inside { }:
+block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
+
+    block_open = { "{" }
+    block_inner = _{ (block_assignment | block_css | block_expression)* }
+    block_end_stmt = _{ n ~ &"}" | eoi | n ~ ";" ~ n }
+    block_close = { "}" }
+
+    block_expression = { (variable_accessor | block) ~ END }
+    block_interpolated_expression = !{ "${" ~n~ expression ~n~ "}" }
+    block_assignment = { block_variable_assign ~n~ expression ~ block_end_stmt }
+        block_variable_assign = ${ variable ~ ":" }
+
+    block_css = { block_css_key ~ ":" ~n~ block_css_value ~ block_end_stmt }
+    block_selector = ${ ( block_interpolated_expression | block_selector_chars )* }
+        block_selector_chars = ${ ( !(("\n" ~ "\n") | ("(" ~n~ "{") | "$" | "{" | ";" | "}") ~ any )+ }
+
+    block_css_key = ${ (block_interpolated_expression | block_css_key_chars)+ }
+        block_css_key_chars = ${ ( 'a'..'z' | "-" )+ }
+    block_css_value = ${ (block_interpolated_expression | variable_accessor | block_css_value_chars)+ }
+        block_css_value_chars = ${ ( !(block_interpolated_expression | variable | ";" | "}") ~ any )+ }
+
+// any expression can also exist in parentheses:
+paren_expression = { "(" ~n~ expression ~n~ ")" }
+
+variable = ${ "$" ~ variable_name }
+naked_variable = { variable_name }
+if_then_else = { "if" ~n~ expression ~n~ "then" ~n~ expression ~n~ "else" ~n~ expression }
+
+function = { "(" ~n~ function_args? ~n~ ")" ~n~ "=>" ~n~ function_expression }
+    function_args = { variable ~n~ ( "," ~n~ variable )* }
+    function_expression = { expression }
+
+variable_name = { ('a'..'z' | 'A'..'Z' | "_" | '0'..'9')+ }
+boolean = { boolean_true | boolean_false }
+    boolean_true = { "true" }
+    boolean_false = { "false" }
+
+string  = ${ "\"" ~ string_contents ~ "\"" }
+    string_contents = { (escaped_char | !("\"" | "\\") ~ any)* }
+    escaped_char  =  _{ "\\" ~ ("\"" | "\\") }
+
+colour = { "#" ~ hex_value }
+    hex_value = { hex ~ hex ~ hex ~ (hex{5} | hex{3} | hex{1})? }
+    hex = _{ 'a'..'z' | 'A'..'Z' | '0'..'9' }
+
+unit = ${ number ~ number_suffix }
+    number = ${ "-"? ~ ("0" | '1'..'9' ~ '0'..'9'*) ~ ( "." ~ '0'..'9'+ )? }
+    number_suffix = ${ ('a'..'z'+ | "%")? }
+
+// is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
+// , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
+END = _{ (n ~ ";" ~n) | N | (n ~ eoi) | (n ~ &"}") }
+
+// matches but does not expect a newline:
+n = _{ ("\r" | "\n" | whitespace)* }
+
+// matches and expects a newline.
+N = _{ whitespace* ~ ("\r" | "\n")+ ~ n }
+
+// normal whitespace allowed is just tabs and spaces; we're explicit about newlines:
+whitespace = _{ (" " | "\t")+ }
+
+// allow block and "//" style comments
+comment = _{ block_comment | eol_comment }
+    block_comment = _{ "/*" ~ (block_comment | ( !(block_comment | "*/") ~ any))* ~ "*/" }
+    eol_comment = _{ "//" ~ (!"\n" ~ any)* ~ "\n" }
