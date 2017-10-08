@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[derive(Clone,Debug,PartialEq)]
 struct Item<T> {
     item: T,
-    next: Arc<Link<T>>
+    next: Rc<Link<T>>
 }
 
 #[derive(Clone,Debug,PartialEq)]
@@ -15,7 +15,7 @@ enum Link<T> {
 /// An immutable singly linked list.
 #[derive(Clone,Debug,PartialEq)]
 pub struct List<T> {
-    head: Arc<Link<T>>
+    head: Rc<Link<T>>
 }
 
 impl<T> List<T> {
@@ -23,7 +23,7 @@ impl<T> List<T> {
     /// create a new, empty linked list.
     pub fn new() -> List<T> {
         List{
-            head: Arc::new(Link::Empty)
+            head: Rc::new(Link::Empty)
         }
     }
 
@@ -31,7 +31,7 @@ impl<T> List<T> {
     /// item added to the front.
     pub fn push(&self, item: T) -> List<T> {
         List{
-            head: Arc::new(Link::Elem(Item{
+            head: Rc::new(Link::Elem(Item{
                 item: item,
                 next: self.head.clone()
             }))
