@@ -1,7 +1,7 @@
 name: fuss
 version: "1.0"
 author: James W. <jammyw@gmail.com>
-about: FU[nctional C]SS, a CSS Preprocessor
+about: FUSS, a CSS Preprocessor
 args:
     - input:
         short: i
