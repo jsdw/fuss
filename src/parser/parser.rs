@@ -11,11 +11,16 @@ const _GRAMMAR: &'static str = include_str!("grammar.pest");
 #[grammar = "./parser/grammar.pest"]
 struct MyGrammar;
 
+type MyPair = Pair<Rule,StrInput>;
+type MySpan = Span<StrInput>;
+
 pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
     match MyGrammar::parse_str(Rule::file, input) {
-        Ok(pairs) => {
-            Ok(file_expression(pairs))
+        Ok(mut pairs) => {
+            // we expect one top level "file" rule at this point, otherwise
+            // something has gone seriously wrong. begin parsing from that.
+            Ok(file_expression(pairs.next().expect("File expression expected")))
         },
         Err(e) => {
             Err(ErrorType::ParseError(format!("{}", e)))
@@ -24,13 +29,79 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
 }
 
-fn file_expression(pairs: Pairs<Rule, StrInput>) -> Expression {
-
+fn to_expression(span: MySpan, expr: Expr) -> Expression {
     Expression::with_position(
-        ::types::Position::new(),
-        ::types::Position::new(),
-        Expr::Var("lark".to_owned(), VarType::User)
+        ::types::Position(span.start()),
+        ::types::Position(span.end()),
+        expr
     )
+}
+
+fn file_expression(pair: MyPair) -> Expression {
+    to_expression(
+        pair.clone().into_span(),
+        Expr::Block(css_block_inner_block(pair))
+    )
+}
+
+fn expression(pair: MyPair) -> Expression {
+    unimplemented!()
+}
+
+fn css_block_inner_block(pair: MyPair) -> Block {
+    let inner = css_block_inner(pair);
+    Block {
+        scope:inner.scope,
+        css:inner.css,
+        selector:vec![]
+    }
+}
+
+fn css_block_inner(pair: MyPair) -> CSSBlockInner {
+    let inner = css_block_inner_pieces(pair);
+    let mut scope = HashMap::new();
+    let mut css = vec![];
+    for val in inner.into_iter() {
+        match val {
+            CSSBlockInnerPiece::Scope(key,val) => {
+                scope.insert(key,val);
+            },
+            CSSBlockInnerPiece::CSS(entry) => {
+                css.push(entry);
+            }
+        }
+    }
+    CSSBlockInner{
+        scope: scope,
+        css: css
+    }
+}
+
+fn css_block_inner_pieces(pair: MyPair) -> Vec<CSSBlockInnerPiece> {
+    let out = vec![];
+    for pair in pair.into_inner() {
+
+        match pair.as_rule() {
+            Rule::block_assignment => {
+                let mut inner = pair.into_inner();
+                let varname = variable(inner.next().unwrap());
+                let expression = expression(inner.next().unwrap());
+                out.push(CSSBlockInnerPiece::Scope(varname.to_owned(),expression));
+            },
+            Rule::block_expression => {
+                let mut inner = pair.into_inner();
+                let expression = expression(inner.next().unwrap());
+                out.push(CSSBlockInnerPiece::CSS( CSSEntry::Expr( expression ) ));
+            },
+            Rule::block_css => {
+                let mut inner = pair.into_inner();
+                let block = block_css(inner.next().unwrap());
+                out.push(CSSBlockInnerPiece::CSS( block ));
+            }
+        }
+
+    }
+    out
 
 }
 
