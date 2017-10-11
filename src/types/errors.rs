@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use pest;
 use types::position::Position;
 use types::{EvaluatedExpr,VarType};
 
@@ -25,6 +26,7 @@ pub enum ErrorType {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     CannotImportNoPathSet,
+    ParseError(String),
 
     ImportLoop(Vec<PathBuf>, PathBuf),
     ImportError(Box<Error>),

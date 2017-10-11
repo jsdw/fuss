@@ -1,4 +1,6 @@
-use pest::prelude::*;
+use pest::*;
+use pest::iterators::*;
+use pest::inputs::*;
 use types::*;
 use std::collections::{LinkedList,HashMap};
 
@@ -6,9 +8,33 @@ use std::collections::{LinkedList,HashMap};
 const _GRAMMAR: &'static str = include_str!("grammar.pest");
 
 #[derive(Parser)]
-#[grammar = "grammar.pest"]
-struct Parser;
+#[grammar = "./parser/grammar.pest"]
+struct MyGrammar;
 
+pub fn parse(input: &str) -> Result<Expression,ErrorType> {
+
+    match MyGrammar::parse_str(Rule::file, input) {
+        Ok(pairs) => {
+            Ok(file_expression(pairs))
+        },
+        Err(e) => {
+            Err(ErrorType::ParseError(format!("{}", e)))
+        }
+    }
+
+}
+
+fn file_expression(pairs: Pairs<Rule, StrInput>) -> Expression {
+
+    Expression::with_position(
+        ::types::Position::new(),
+        ::types::Position::new(),
+        Expr::Var("lark".to_owned(), VarType::User)
+    )
+
+}
+
+/*
 // parse a string into an expression
 pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
@@ -1034,3 +1060,5 @@ mod test {
     }
 
 }
+
+*/
