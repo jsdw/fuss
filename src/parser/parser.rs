@@ -1,7 +1,7 @@
+use types::*;
 use pest::*;
 use pest::iterators::*;
 use pest::inputs::*;
-use types::*;
 use std::collections::{LinkedList,HashMap};
 
 #[cfg(debug_assertions)]
@@ -11,8 +11,8 @@ const _GRAMMAR: &'static str = include_str!("grammar.pest");
 #[grammar = "./parser/grammar.pest"]
 struct MyGrammar;
 
-type MyPair = Pair<Rule,StrInput>;
-type MySpan = Span<StrInput>;
+type MyPair<'a> = Pair<Rule,StrInput<'a>>;
+type MySpan<'a> = Span<StrInput<'a>>;
 
 pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
@@ -29,14 +29,6 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
 }
 
-fn to_expression(span: MySpan, expr: Expr) -> Expression {
-    Expression::with_position(
-        ::types::Position(span.start()),
-        ::types::Position(span.end()),
-        expr
-    )
-}
-
 fn file_expression(pair: MyPair) -> Expression {
     to_expression(
         pair.clone().into_span(),
@@ -45,6 +37,188 @@ fn file_expression(pair: MyPair) -> Expression {
 }
 
 fn expression(pair: MyPair) -> Expression {
+    /*
+        // recursing rules:
+        (_:expression, expression:_expression()) =>
+            expression,
+        (_:paren_expression, expression: _expression()) =>
+            expression,
+        (_:variable_accessor, expression: _expression()) =>
+            expression,
+        // infix precedence parsing:
+        (rule:infix0, expr:_infix()) =>
+            expression(rule, expr),
+        (rule:infix1, expr:_infix()) =>
+            expression(rule, expr),
+        (rule:infix2, expr:_infix()) =>
+            expression(rule, expr),
+        (rule:infix3, expr:_infix()) =>
+            expression(rule, expr),
+        (rule:infix4, expr:_infix()) =>
+            expression(rule, expr),
+        (rule:infix5, expr:_infix()) =>
+            expression(rule, expr),
+        // exprs:
+        (rule:function, expr:_function()) =>
+            expression(rule, expr),
+        (rule:if_then_else, expr:_if_then_else()) =>
+            expression(rule, expr),
+        (rule:prefix_application, expr:_prefix_application()) =>
+            expression(rule, expr),
+        (rule:accessible, expr:_accessible()) =>
+            expression(rule, expr),
+        (rule:accessible_css, expr:_accessible()) =>
+            expression(rule, expr),
+        (rule:block, expr:_block()) =>
+            expression(rule, expr),
+        (rule:variable, &var:variable_name) =>
+            expression(rule, Expr::Var(var.to_owned(), VarType::User)),
+        (rule:naked_variable, &var:variable_name) =>
+            expression(rule, Expr::Var(var.to_owned(), VarType::Builtin)),
+        // primitives:
+        (rule:string, &s:string_contents) =>
+            expression(rule, Expr::Str(escaped_string(s))),
+        (rule:unit, &n:number, &s:number_suffix) =>
+            expression(rule, Expr::Unit( n.parse::<f64>().unwrap(), s.to_owned() )),
+        (rule:boolean, _:boolean_true) =>
+            expression(rule, Expr::Bool(true)),
+        (rule:boolean, _:boolean_false) =>
+            expression(rule, Expr::Bool(false)),
+        (rule:colour, colour:_colour()) =>
+            expression(rule, colour),
+        (rule:undefined) =>
+            expression(rule, Expr::Undefined),
+    */
+    unimplemented!()
+}
+
+fn function(pair: MyPair) -> Expr {
+    /*
+        (_:function_args, args:_function_args(), _:function_expression, expr:_expression()) => {
+            let arg_vec = args.into_iter().collect::<Vec<String>>();
+            Expr::Func{
+                inputs: arg_vec,
+                output: expr
+            }
+        },
+        (_:function_expression, expr:_expression()) => {
+            Expr::Func{
+                inputs: vec![],
+                output: expr
+            }
+        },
+    */
+    unimplemented!()
+}
+
+fn function_args(pair: MyPair) -> Vec<String> {
+    /*
+        (_: variable, &name:variable_name, mut tail: _function_args()) => {
+            tail.push_front(name.to_owned());
+            tail
+        },
+        () => {
+            LinkedList::new()
+        }
+    */
+    unimplemented!()
+}
+
+fn if_then_else(pair: MyPair) -> Expr {
+    /*
+        (cond: _expression(), then: _expression(), otherwise: _expression()) => {
+            Expr::If{
+                cond: cond,
+                then: then,
+                otherwise: otherwise
+            }
+        }
+    */
+    unimplemented!()
+}
+
+fn colour(pair: MyPair) -> Expr {
+    /*
+        (&hex:hex_value) => {
+            match Colour::from_hex_str(hex) {
+                None => Expr::Colour(Colour::transparent()),
+                Some(col) => Expr::Colour(col)
+            }
+        }
+    */
+    unimplemented!()
+}
+
+fn prefix_application(pair: MyPair) -> Expr {
+    /*
+        (sign:_naked_variable_expression(), _:prefix_application_arg, arg:_expression()) => {
+            Expr::Accessed{
+                expression: sign,
+                access: vec![ Accessor::Function{args:vec![arg]} ]
+            }
+        },
+    */
+    unimplemented!()
+}
+
+fn accessible(pair: MyPair) -> Expr {
+    /*
+        (expr: _expression(), accessors: _accessors_start()) => {
+            if accessors.len() > 0 {
+                Expr::Accessed{
+                    expression: expr,
+                    access: accessors
+                }
+            } else {
+                expr.into_expr().expect("should be able to unwrap accessible expr")
+            }
+        }
+    */
+    unimplemented!()
+}
+
+fn accessors_start(pair: MyPair) -> Vec<Accessor> {
+    /*
+        (_:access, accessors: _accessors()) => {
+            accessors.into_iter().collect()
+        },
+        () => {
+            Vec::new()
+        }
+
+        // may as well merge this in:
+
+        _accessors(&self) -> LinkedList<Accessor> {
+            (_:property_access, &name:variable_name, mut rest: _accessors()) => {
+                rest.push_front(Accessor::Property{
+                    name: name.to_owned()
+                });
+                rest
+            },
+            (_:function_access, _:function_access_args, args:_function_access_args(), mut rest: _accessors()) => {
+                rest.push_front(Accessor::Function{
+                    args: args.into_iter().collect::<Vec<Expression>>()
+                });
+                rest
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+
+    // and maybe this as well:
+
+        _function_access_args(&self) -> LinkedList<Expression> {
+            (_:function_arg, expr:_expression(), mut tail: _function_access_args()) => {
+                tail.push_front(expr);
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+
+    */
     unimplemented!()
 }
 
@@ -55,6 +229,38 @@ fn css_block_inner_block(pair: MyPair) -> Block {
         css:inner.css,
         selector:vec![]
     }
+}
+
+fn block(pair: MyPair) -> Expr {
+    /*
+        (_:block_selector, selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
+            Expr::Block(Block{
+                selector: selector.into_iter().collect::<Vec<CSSBit>>(),
+                scope: inner.scope,
+                css: inner.css
+            })
+        }
+    */
+    unimplemented!()
+}
+
+fn block_selector(pair: MyPair) -> Vec<CSSBit> {
+    /*
+        _block_selector(&self) -> LinkedList<CSSBit> {
+            (&chars:block_selector_chars, mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            (_:block_interpolated_expression, expr:_expression(), mut tail: _block_selector()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+    */
+    unimplemented!()
 }
 
 fn css_block_inner(pair: MyPair) -> CSSBlockInner {
@@ -103,6 +309,102 @@ fn css_block_inner_pieces(pair: MyPair) -> Vec<CSSBlockInnerPiece> {
     }
     out
 
+}
+
+fn block_css(pair: MyPair) -> CSSEntry {
+    /*
+        _block_css(&self) -> CSSEntry {
+            (_:block_css_key, key:_block_css_key(), _:block_css_value, val:_block_css_val()) => {
+                CSSEntry::KeyVal{
+                    key: key.into_iter().collect::<Vec<CSSBit>>(),
+                    val: val.into_iter().collect::<Vec<CSSBit>>()
+                }
+            }
+        }
+    */
+    unimplemented!()
+}
+
+fn block_css_key(pair: MyPair) -> Vec<CSSBit> {
+    /*
+        _block_css_key(&self) -> LinkedList<CSSBit> {
+            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (&chars:block_css_key_chars, mut tail:_block_css_key()) => {
+                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+    */
+    unimplemented!()
+}
+
+fn block_css_val(pair: MyPair) -> Vec<CSSBit> {
+    /*
+        _block_css_val(&self) -> LinkedList<CSSBit> {
+            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (_:variable_accessor, expr: _expression(), mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Expr(expr) );
+                tail
+            },
+            (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
+                tail.push_front( CSSBit::Str(chars.to_owned()) );
+                tail
+            },
+            () => {
+                LinkedList::new()
+            }
+        }
+    */
+    unimplemented!()
+}
+
+//
+// Helpers:
+//
+
+fn to_expression(span: MySpan, expr: Expr) -> Expression {
+    Expression::with_position(
+        ::types::Position(span.start()),
+        ::types::Position(span.end()),
+        expr
+    )
+}
+
+// escape a string - allow \\ and \" in a string; resulting in \ and ".
+fn escaped_string(s: &str) -> String {
+    let mut out = String::new();
+    let mut is_escaped = false;
+    for c in s.chars() {
+        if !is_escaped && c == '\\' {
+           is_escaped = true;
+        } else {
+            out.push(c);
+            is_escaped = false;
+        }
+    }
+    out
+}
+
+// a quick struct to let us build up a linkedlist of block inner pieces:
+#[derive(Clone,Debug,PartialEq)]
+pub enum CSSBlockInnerPiece {
+    Scope(String,Expression),
+    CSS(CSSEntry)
+}
+
+#[derive(Clone,Debug,PartialEq)]
+pub struct CSSBlockInner {
+    pub scope: HashMap<String,Expression>,
+    pub css: Vec<CSSEntry>
 }
 
 /*
