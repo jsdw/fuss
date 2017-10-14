@@ -2,6 +2,7 @@ use types::*;
 use pest::*;
 use pest::iterators::*;
 use pest::inputs::*;
+use pest::prec_climber::{PrecClimber, Operator, Assoc};
 use std::collections::{LinkedList,HashMap};
 
 #[cfg(debug_assertions)]
@@ -37,6 +38,44 @@ fn file_expression(pair: MyPair) -> Expression {
 }
 
 fn expression(pair: MyPair) -> Expression {
+
+    // define our precedences:
+    let climber = PrecClimber::new(vec![
+        Operator::new(Rule::infix0_op, Assoc::Left),
+        Operator::new(Rule::infix1_op, Assoc::Left),
+        Operator::new(Rule::infix2_op, Assoc::Left),
+        Operator::new(Rule::infix3_op, Assoc::Left),
+        Operator::new(Rule::infix4_op, Assoc::Left),
+        Operator::new(Rule::infix5_op, Assoc::Right)
+    ]);
+
+    // eval infix ops:
+    let infix = |left: Expression, op: MyPair, right: Expression| -> Expression {
+        Expression::with_position(
+            left.start,
+            right.end,
+            Expr::Accessed{
+                expression: naked_variable_expression(op),
+                access: vec![ Accessor::Function{args:vec![left,right]} ]
+            }
+        )
+    };
+
+    // climb:
+    climber.climb(pair.into_inner(), primary_expression, infix)
+}
+
+fn naked_variable_expression(pair: MyPair) -> Expression {
+    let span = pair.clone().into_span();
+    let tok = pair.as_str().to_owned();
+    Expression::with_position(
+        Position(span.start()),
+        Position(span.end()),
+        Expr::Var(tok, VarType::Builtin)
+    )
+}
+
+fn primary_expression(pair: MyPair) -> Expression {
     /*
         // recursing rules:
         (_:expression, expression:_expression()) =>
