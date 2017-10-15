@@ -75,6 +75,20 @@ fn naked_variable_expression(pair: MyPair) -> Expression {
     )
 }
 
+fn variable_name(pair: MyPair) -> String {
+    match pair.as_rule() {
+        Rule::variable_name => {
+            pair.as_str().to_owned()
+        },
+        _ => {
+            match pair.into_inner().next() {
+                None => panic!("variable_name rule not found"),
+                Some(inner) => variable_name(inner)
+            }
+        }
+    }
+}
+
 fn primary_expression(pair: MyPair) -> Expression {
     /*
         // recursing rules:
@@ -323,13 +337,13 @@ fn css_block_inner(pair: MyPair) -> CSSBlockInner {
 }
 
 fn css_block_inner_pieces(pair: MyPair) -> Vec<CSSBlockInnerPiece> {
-    let out = vec![];
+    let mut out = vec![];
     for pair in pair.into_inner() {
 
         match pair.as_rule() {
             Rule::block_assignment => {
                 let mut inner = pair.into_inner();
-                let varname = variable(inner.next().unwrap());
+                let varname = variable_name(inner.next().unwrap());
                 let expression = expression(inner.next().unwrap());
                 out.push(CSSBlockInnerPiece::Scope(varname.to_owned(),expression));
             },
@@ -342,6 +356,9 @@ fn css_block_inner_pieces(pair: MyPair) -> Vec<CSSBlockInnerPiece> {
                 let mut inner = pair.into_inner();
                 let block = block_css(inner.next().unwrap());
                 out.push(CSSBlockInnerPiece::CSS( block ));
+            },
+            _ => {
+                unreachable!()
             }
         }
 
