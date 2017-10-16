@@ -119,19 +119,19 @@ fn primary_expression(pair: MyPair) -> Expression {
         },
         // expression types:
         Rule::function => {
-            to_expression(pair.clone(), function(inner_pair(pair)))
+            to_expression(pair.clone(), function(pair))
         },
         Rule::if_then_else => {
-            to_expression(pair.clone(), if_then_else(inner_pair(pair)))
+            to_expression(pair.clone(), if_then_else(pair))
         },
         Rule::prefix_application => {
-            to_expression(pair.clone(), prefix_application(inner_pair(pair)))
+            to_expression(pair.clone(), prefix_application(pair))
         },
         Rule::accessible | Rule::accessible_css => {
-            to_expression(pair.clone(), accessible(inner_pair(pair)))
+            to_expression(pair.clone(), accessible(pair))
         },
         Rule::block => {
-            to_expression(pair.clone(), block(inner_pair(pair)))
+            to_expression(pair.clone(), block(pair))
         },
         Rule::variable => {
             to_expression(pair.clone(), Expr::Var(variable_name_string(pair), VarType::User))
@@ -159,7 +159,7 @@ fn primary_expression(pair: MyPair) -> Expression {
             to_expression(pair.clone(), Expr::Bool(b))
         },
         Rule::colour => {
-            to_expression(pair.clone(), colour(inner_pair(pair)))
+            to_expression(pair.clone(), colour(pair))
         },
         Rule::undefined => {
             to_expression(pair.clone(), Expr::Undefined)
@@ -201,7 +201,9 @@ fn if_then_else(pair: MyPair) -> Expr {
 }
 
 fn colour(pair: MyPair) -> Expr {
-    match_rules!{pair, let hex = hex_value}
+    match_rules!{pair,
+        let hex = hex_value;
+    }
     match Colour::from_hex_str(hex.as_str()) {
         None => Expr::Colour(Colour::transparent()),
         Some(col) => Expr::Colour(col)
@@ -220,64 +222,54 @@ fn prefix_application(pair: MyPair) -> Expr {
 }
 
 fn accessible(pair: MyPair) -> Expr {
-    /*
-        (expr: _expression(), accessors: _accessors_start()) => {
-            if accessors.len() > 0 {
-                Expr::Accessed{
-                    expression: expr,
-                    access: accessors
-                }
-            } else {
-                expr.into_expr().expect("should be able to unwrap accessible expr")
-            }
+    let mut inner = pair.into_inner();
+    let expr = expression(inner.next().unwrap());
+
+    let accessors = if let Some(access_pair) = inner.next() {
+        access(access_pair)
+    } else {
+        vec![]
+    };
+
+    if accessors.len() > 0 {
+        Expr::Accessed{
+            expression: expr,
+            access: accessors
         }
-    */
-    unimplemented!()
+    } else {
+        expr.into_expr().expect("should be able to unwrap accessible expr")
+    }
 }
 
-fn accessors_start(pair: MyPair) -> Vec<Accessor> {
-    /*
-        (_:access, accessors: _accessors()) => {
-            accessors.into_iter().collect()
-        },
-        () => {
-            Vec::new()
-        }
-
-        // may as well merge this in:
-
-        _accessors(&self) -> LinkedList<Accessor> {
-            (_:property_access, &name:variable_name, mut rest: _accessors()) => {
-                rest.push_front(Accessor::Property{
-                    name: name.to_owned()
+fn access(pair: MyPair) -> Vec<Accessor> {
+    let mut accessors = vec![];
+    for accessor in pair.into_inner() {
+        match accessor.as_rule() {
+            Rule::property_access => {
+                accessors.push(Accessor::Property{
+                    name: accessor.as_str().to_owned()
                 });
-                rest
             },
-            (_:function_access, _:function_access_args, args:_function_access_args(), mut rest: _accessors()) => {
-                rest.push_front(Accessor::Function{
-                    args: args.into_iter().collect::<Vec<Expression>>()
+            Rule::function_access => {
+                accessors.push(Accessor::Function{
+                    args: function_access(accessor)
                 });
-                rest
             },
-            () => {
-                LinkedList::new()
+            _ => {
+                unreachable!();
             }
         }
+    }
+    accessors
+}
 
-    // and maybe this as well:
-
-        _function_access_args(&self) -> LinkedList<Expression> {
-            (_:function_arg, expr:_expression(), mut tail: _function_access_args()) => {
-                tail.push_front(expr);
-                tail
-            },
-            () => {
-                LinkedList::new()
-            }
-        }
-
-    */
-    unimplemented!()
+fn function_access(pair: MyPair) -> Vec<Expression> {
+    let function_access_args = inner_pair(pair);
+    let mut args = vec![];
+    for expr in function_access_args.into_inner() {
+        args.push(expression(expr))
+    }
+    args
 }
 
 fn css_block_inner_block(pair: MyPair) -> Block {

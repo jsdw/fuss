@@ -32,8 +32,7 @@ accessible = ${ (paren_expression | variable | naked_variable) ~ access? }
     access = ${ (property_access | function_access)+ }
         property_access = ${ "." ~ variable_name }
         function_access = ${ "(" ~ function_access_args ~ ")" }
-            function_access_args = !{ ( function_arg ~n~ ("," ~n~ function_arg)* )? }
-                function_arg = { expression }
+            function_access_args = !{ ( expression ~n~ ("," ~n~ expression)* )? }
 
 // a version of accessing only for variables, for use in css bits:
 variable_accessor = { accessible_css }
