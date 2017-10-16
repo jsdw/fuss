@@ -3,7 +3,7 @@ use pest::*;
 use pest::iterators::*;
 use pest::inputs::*;
 use pest::prec_climber::{PrecClimber, Operator, Assoc};
-use std::collections::{LinkedList,HashMap};
+use std::collections::{HashMap};
 
 #[cfg(debug_assertions)]
 const _GRAMMAR: &'static str = include_str!("grammar.pest");
@@ -43,7 +43,7 @@ macro_rules! match_rules{
 fn file_expression(pair: MyPair) -> Expression {
     to_expression(
         pair.clone(),
-        Expr::Block(css_block_inner_block(pair))
+        Expr::Block(block_inner(inner_pair(pair)))
     )
 }
 
@@ -272,151 +272,116 @@ fn function_access(pair: MyPair) -> Vec<Expression> {
     args
 }
 
-fn css_block_inner_block(pair: MyPair) -> Block {
-    let inner = css_block_inner(pair);
-    Block {
-        scope:inner.scope,
-        css:inner.css,
-        selector:vec![]
-    }
-}
-
-fn block(pair: MyPair) -> Expr {
-    /*
-        (_:block_selector, selector:_block_selector(), _:block_open, inner:_css_block_inner(), _:block_close) => {
-            Expr::Block(Block{
-                selector: selector.into_iter().collect::<Vec<CSSBit>>(),
-                scope: inner.scope,
-                css: inner.css
-            })
-        }
-    */
-    unimplemented!()
-}
-
-fn block_selector(pair: MyPair) -> Vec<CSSBit> {
-    /*
-        _block_selector(&self) -> LinkedList<CSSBit> {
-            (&chars:block_selector_chars, mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
-                tail
-            },
-            (_:block_interpolated_expression, expr:_expression(), mut tail: _block_selector()) => {
-                tail.push_front( CSSBit::Expr(expr) );
-                tail
-            },
-            () => {
-                LinkedList::new()
-            }
-        }
-    */
-    unimplemented!()
-}
-
-fn css_block_inner(pair: MyPair) -> CSSBlockInner {
-    let inner = css_block_inner_pieces(pair);
+fn block_inner(pair: MyPair) -> Block {
     let mut scope = HashMap::new();
     let mut css = vec![];
-    for val in inner {
-        match val {
-            CSSBlockInnerPiece::Scope(key,val) => {
-                scope.insert(key,val);
-            },
-            CSSBlockInnerPiece::CSS(entry) => {
-                css.push(entry);
-            }
-        }
-    }
-    CSSBlockInner{
-        scope: scope,
-        css: css
-    }
-}
 
-fn css_block_inner_pieces(pair: MyPair) -> Vec<CSSBlockInnerPiece> {
-    let mut out = vec![];
     for inner in pair.into_inner() {
-
         match inner.as_rule() {
             Rule::block_assignment => {
                 match_rules!{inner,
                     let var = block_variable_assign;
                     let expr = expression;
                 }
-                out.push(CSSBlockInnerPiece::Scope(variable_name_string(var),expression(expr)));
+                scope.insert(variable_name_string(var),expression(expr));
             },
             Rule::block_expression => {
                 let expression = expression(inner_pair(inner));
-                out.push(CSSBlockInnerPiece::CSS( CSSEntry::Expr( expression ) ));
+                css.push(CSSEntry::Expr( expression ));
             },
             Rule::block_css => {
                 let block = block_css(inner_pair(inner));
-                out.push(CSSBlockInnerPiece::CSS( block ));
+                css.push(block);
             },
             _ => {
                 unreachable!()
             }
         }
+    }
 
+    Block {
+        scope:scope,
+        css:css,
+        selector:vec![]
+    }
+}
+
+fn block(pair: MyPair) -> Expr {
+    match_rules!{pair,
+        let selector = block_selector;
+        let open = block_open;
+        let inner = block_inner;
+        let close = block_close;
+    }
+
+    let mut block = block_inner(inner);
+    block.selector = block_selector(selector);
+    Expr::Block(block)
+}
+
+fn block_selector(pair: MyPair) -> Vec<CSSBit> {
+    let mut out = vec![];
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::block_selector_chars => {
+                out.push(CSSBit::Str(inner.as_str().to_owned()));
+            },
+            Rule::block_interpolated_expression => {
+                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
+            },
+            _ => {
+                unreachable!();
+            }
+        }
     }
     out
-
 }
 
 fn block_css(pair: MyPair) -> CSSEntry {
-    /*
-        _block_css(&self) -> CSSEntry {
-            (_:block_css_key, key:_block_css_key(), _:block_css_value, val:_block_css_val()) => {
-                CSSEntry::KeyVal{
-                    key: key.into_iter().collect::<Vec<CSSBit>>(),
-                    val: val.into_iter().collect::<Vec<CSSBit>>()
-                }
-            }
-        }
-    */
-    unimplemented!()
+    match_rules!{pair,
+        let key = block_css_key;
+        let val = block_css_value;
+    }
+    CSSEntry::KeyVal{
+        key: block_css_key(key),
+        val: block_css_value(val)
+    }
 }
 
 fn block_css_key(pair: MyPair) -> Vec<CSSBit> {
-    /*
-        _block_css_key(&self) -> LinkedList<CSSBit> {
-            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_key()) => {
-                tail.push_front( CSSBit::Expr(expr) );
-                tail
+    let mut out = vec![];
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::block_css_key_chars => {
+                out.push(CSSBit::Str( inner.as_str().trim().to_owned() ));
             },
-            (&chars:block_css_key_chars, mut tail:_block_css_key()) => {
-                tail.push_front( CSSBit::Str(chars.trim().to_owned()) );
-                tail
+            Rule::block_interpolated_expression => {
+                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
             },
-            () => {
-                LinkedList::new()
+            _ => {
+                unreachable!();
             }
         }
-    */
-    unimplemented!()
+    }
+    out
 }
 
-fn block_css_val(pair: MyPair) -> Vec<CSSBit> {
-    /*
-        _block_css_val(&self) -> LinkedList<CSSBit> {
-            (_:block_interpolated_expression, expr:_expression(), mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Expr(expr) );
-                tail
+fn block_css_value(pair: MyPair) -> Vec<CSSBit> {
+    let mut out = vec![];
+    for inner in pair.into_inner() {
+        match inner.as_rule() {
+            Rule::block_interpolated_expression | Rule::variable_accessor => {
+                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
             },
-            (_:variable_accessor, expr: _expression(), mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Expr(expr) );
-                tail
+            Rule::block_css_value_chars => {
+                out.push(CSSBit::Str( inner.as_str().to_owned() ));
             },
-            (&chars:block_css_value_chars, mut tail:_block_css_val()) => {
-                tail.push_front( CSSBit::Str(chars.to_owned()) );
-                tail
-            },
-            () => {
-                LinkedList::new()
+            _ => {
+                unreachable!();
             }
         }
-    */
-    unimplemented!()
+    }
+    out
 }
 
 //
@@ -445,19 +410,6 @@ fn escaped_string(s: &str) -> String {
         }
     }
     out
-}
-
-// a quick struct to let us build up a linkedlist of block inner pieces:
-#[derive(Clone,Debug,PartialEq)]
-pub enum CSSBlockInnerPiece {
-    Scope(String,Expression),
-    CSS(CSSEntry)
-}
-
-#[derive(Clone,Debug,PartialEq)]
-pub struct CSSBlockInner {
-    pub scope: HashMap<String,Expression>,
-    pub css: Vec<CSSEntry>
 }
 
 /*

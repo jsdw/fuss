@@ -47,7 +47,7 @@ prefix_application = ${ prefix_application_fn ~ prefix_application_arg }
 block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
 
     block_open = { "{" }
-    block_inner = _{ (block_assignment | block_css | block_expression)* }
+    block_inner = { (block_assignment | block_css | block_expression)* }
     block_end_stmt = _{ n ~ &"}" | eoi | n ~ ";" ~ n }
     block_close = { "}" }
 

@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use pest;
 use types::position::Position;
 use types::{EvaluatedExpr,VarType};
 
