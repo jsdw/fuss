@@ -30,7 +30,7 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
 }
 
-macro_rules! match_rules{
+macro_rules! match_rules {
     ($pair:expr, $(let $var:ident = $rule:ident);+ $(;)* ) => {
         let mut iter = $pair.into_inner();
         $(
@@ -39,73 +39,23 @@ macro_rules! match_rules{
         )*
     }
 }
+macro_rules! parser_rules {
+    ( $( fn $rule:ident ($pair:ident : MyPair) -> $resTy:path $block:block )+ ) => (
+        $(
+            fn $rule($pair: MyPair) -> $resTy {
+                let r = $pair.as_rule();
+                assert!(r == Rule::$rule, "parser_rules function '{}' expected the rule {:?}, but got {:?}", stringify!($name), Rule::$rule, r);
+                $block
+            }
+        )+
+    )
+}
 
 fn file_expression(pair: MyPair) -> Expression {
     to_expression(
         pair.clone(),
         Expr::Block(block_inner(inner_pair(pair)))
     )
-}
-
-fn expression(pair: MyPair) -> Expression {
-
-    // define our precedences:
-    let climber = PrecClimber::new(vec![
-        Operator::new(Rule::infix0_op, Assoc::Left),
-        Operator::new(Rule::infix1_op, Assoc::Left),
-        Operator::new(Rule::infix2_op, Assoc::Left),
-        Operator::new(Rule::infix3_op, Assoc::Left),
-        Operator::new(Rule::infix4_op, Assoc::Left),
-        Operator::new(Rule::infix5_op, Assoc::Right)
-    ]);
-
-    // eval infix ops:
-    let infix = |left: Expression, op: MyPair, right: Expression| -> Expression {
-        Expression::with_position(
-            left.start,
-            right.end,
-            Expr::Accessed{
-                expression: naked_variable_expression(op),
-                access: vec![ Accessor::Function{args:vec![left,right]} ]
-            }
-        )
-    };
-
-    // climb:
-    climber.climb(pair.into_inner(), primary_expression, infix)
-}
-
-// look for a variable_name in the current tree, and return it as a Builtin Expression
-fn naked_variable_expression(pair: MyPair) -> Expression {
-    let span = pair.clone().into_span();
-    let tok = variable_name_string(pair);
-    Expression::with_position(
-        Position(span.start()),
-        Position(span.end()),
-        Expr::Var(tok, VarType::Builtin)
-    )
-}
-
-// Look for a variable_name rule in the pair we have been handed and return it, panicking
-// if we don't find one.
-fn variable_name_string(pair: MyPair) -> String {
-    match pair.as_rule() {
-        Rule::variable_name => {
-            pair.as_str().to_owned()
-        },
-        _ => {
-            match pair.into_inner().next() {
-                None => panic!("variable_name rule not found"),
-                Some(inner) => variable_name_string(inner)
-            }
-        }
-    }
-}
-
-// go one level down into a pair, giving back the first child pair or panicking if
-// one doesn't exist.
-fn inner_pair(pair: MyPair) -> MyPair {
-    pair.into_inner().next().unwrap()
 }
 
 fn primary_expression(pair: MyPair) -> Expression {
@@ -170,218 +120,253 @@ fn primary_expression(pair: MyPair) -> Expression {
     }
 }
 
-fn function(pair: MyPair) -> Expr {
-    let mut inner = pair.into_inner();
-    let args_pair = inner.next().unwrap();
-    let body_pair = inner.next().unwrap();
+// function names == name of rule it expects to be given.
+// this macro extends each function declared within to check that this is
+// indeed the case.
+parser_rules!{
 
-    let args = if Rule::function_args == args_pair.as_rule() {
-        args_pair.into_inner().map(|arg| variable_name_string(arg)).collect()
-    } else {
-        vec![]
-    };
+    fn expression(pair: MyPair) -> Expression {
 
-    Expr::Func{
-        inputs: args,
-        output: expression(body_pair)
-    }
-}
+        // define our precedences:
+        let climber = PrecClimber::new(vec![
+            Operator::new(Rule::infix0_op, Assoc::Left),
+            Operator::new(Rule::infix1_op, Assoc::Left),
+            Operator::new(Rule::infix2_op, Assoc::Left),
+            Operator::new(Rule::infix3_op, Assoc::Left),
+            Operator::new(Rule::infix4_op, Assoc::Left),
+            Operator::new(Rule::infix5_op, Assoc::Right)
+        ]);
 
-fn if_then_else(pair: MyPair) -> Expr {
-    match_rules!{pair,
-        let cond = expression;
-        let then = expression;
-        let otherwise = expression;
-    }
-    Expr::If{
-        cond: expression(cond),
-        then: expression(then),
-        otherwise: expression(otherwise)
-    }
-}
-
-fn colour(pair: MyPair) -> Expr {
-    match_rules!{pair,
-        let hex = hex_value;
-    }
-    match Colour::from_hex_str(hex.as_str()) {
-        None => Expr::Colour(Colour::transparent()),
-        Some(col) => Expr::Colour(col)
-    }
-}
-
-fn prefix_application(pair: MyPair) -> Expr {
-    match_rules!{pair,
-        let sign = prefix_application_fn;
-        let arg = prefix_application_arg;
-    }
-    Expr::Accessed{
-        expression: naked_variable_expression(sign),
-        access: vec![ Accessor::Function{args:vec![expression(inner_pair(arg))]} ]
-    }
-}
-
-fn accessible(pair: MyPair) -> Expr {
-    let mut inner = pair.into_inner();
-    let expr = expression(inner.next().unwrap());
-
-    let accessors = if let Some(access_pair) = inner.next() {
-        access(access_pair)
-    } else {
-        vec![]
-    };
-
-    if accessors.len() > 0 {
-        Expr::Accessed{
-            expression: expr,
-            access: accessors
-        }
-    } else {
-        expr.into_expr().expect("should be able to unwrap accessible expr")
-    }
-}
-
-fn access(pair: MyPair) -> Vec<Accessor> {
-    let mut accessors = vec![];
-    for accessor in pair.into_inner() {
-        match accessor.as_rule() {
-            Rule::property_access => {
-                accessors.push(Accessor::Property{
-                    name: accessor.as_str().to_owned()
-                });
-            },
-            Rule::function_access => {
-                accessors.push(Accessor::Function{
-                    args: function_access(accessor)
-                });
-            },
-            _ => {
-                unreachable!();
-            }
-        }
-    }
-    accessors
-}
-
-fn function_access(pair: MyPair) -> Vec<Expression> {
-    let function_access_args = inner_pair(pair);
-    let mut args = vec![];
-    for expr in function_access_args.into_inner() {
-        args.push(expression(expr))
-    }
-    args
-}
-
-fn block_inner(pair: MyPair) -> Block {
-    let mut scope = HashMap::new();
-    let mut css = vec![];
-
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::block_assignment => {
-                match_rules!{inner,
-                    let var = block_variable_assign;
-                    let expr = expression;
+        // eval infix ops:
+        let infix = |left: Expression, op: MyPair, right: Expression| -> Expression {
+            Expression::with_position(
+                left.start,
+                right.end,
+                Expr::Accessed{
+                    expression: naked_variable_expression(op),
+                    access: vec![ Accessor::Function{args:vec![left,right]} ]
                 }
-                scope.insert(variable_name_string(var),expression(expr));
-            },
-            Rule::block_expression => {
-                let expression = expression(inner_pair(inner));
-                css.push(CSSEntry::Expr( expression ));
-            },
-            Rule::block_css => {
-                let block = block_css(inner_pair(inner));
-                css.push(block);
-            },
-            _ => {
-                unreachable!()
-            }
+            )
+        };
+
+        // climb:
+        climber.climb(pair.into_inner(), primary_expression, infix)
+    }
+
+    fn function(pair: MyPair) -> Expr {
+        let mut inner = pair.into_inner();
+        let args_pair = inner.next().unwrap();
+        let body_pair = inner.next().unwrap();
+
+        let args = if Rule::function_args == args_pair.as_rule() {
+            args_pair.into_inner().map(|arg| variable_name_string(arg)).collect()
+        } else {
+            vec![]
+        };
+
+        Expr::Func{
+            inputs: args,
+            output: expression(body_pair)
         }
     }
 
-    Block {
-        scope:scope,
-        css:css,
-        selector:vec![]
-    }
-}
-
-fn block(pair: MyPair) -> Expr {
-    match_rules!{pair,
-        let selector = block_selector;
-        let open = block_open;
-        let inner = block_inner;
-        let close = block_close;
-    }
-
-    let mut block = block_inner(inner);
-    block.selector = block_selector(selector);
-    Expr::Block(block)
-}
-
-fn block_selector(pair: MyPair) -> Vec<CSSBit> {
-    let mut out = vec![];
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::block_selector_chars => {
-                out.push(CSSBit::Str(inner.as_str().to_owned()));
-            },
-            Rule::block_interpolated_expression => {
-                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
-            },
-            _ => {
-                unreachable!();
-            }
+    fn if_then_else(pair: MyPair) -> Expr {
+        match_rules!{pair,
+            let cond = expression;
+            let then = expression;
+            let otherwise = expression;
+        }
+        Expr::If{
+            cond: expression(cond),
+            then: expression(then),
+            otherwise: expression(otherwise)
         }
     }
-    out
-}
 
-fn block_css(pair: MyPair) -> CSSEntry {
-    match_rules!{pair,
-        let key = block_css_key;
-        let val = block_css_value;
-    }
-    CSSEntry::KeyVal{
-        key: block_css_key(key),
-        val: block_css_value(val)
-    }
-}
-
-fn block_css_key(pair: MyPair) -> Vec<CSSBit> {
-    let mut out = vec![];
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::block_css_key_chars => {
-                out.push(CSSBit::Str( inner.as_str().trim().to_owned() ));
-            },
-            Rule::block_interpolated_expression => {
-                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
-            },
-            _ => {
-                unreachable!();
-            }
+    fn colour(pair: MyPair) -> Expr {
+        match_rules!{pair,
+            let hex = hex_value;
+        }
+        match Colour::from_hex_str(hex.as_str()) {
+            None => Expr::Colour(Colour::transparent()),
+            Some(col) => Expr::Colour(col)
         }
     }
-    out
-}
 
-fn block_css_value(pair: MyPair) -> Vec<CSSBit> {
-    let mut out = vec![];
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::block_interpolated_expression | Rule::variable_accessor => {
-                out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
-            },
-            Rule::block_css_value_chars => {
-                out.push(CSSBit::Str( inner.as_str().to_owned() ));
-            },
-            _ => {
-                unreachable!();
-            }
+    fn prefix_application(pair: MyPair) -> Expr {
+        match_rules!{pair,
+            let sign = prefix_application_fn;
+            let arg = prefix_application_arg;
+        }
+        Expr::Accessed{
+            expression: naked_variable_expression(sign),
+            access: vec![ Accessor::Function{args:vec![expression(inner_pair(arg))]} ]
         }
     }
-    out
+
+    fn accessible(pair: MyPair) -> Expr {
+        let mut inner = pair.into_inner();
+        let expr = expression(inner.next().unwrap());
+
+        let accessors = if let Some(access_pair) = inner.next() {
+            access(access_pair)
+        } else {
+            vec![]
+        };
+
+        if accessors.len() > 0 {
+            Expr::Accessed{
+                expression: expr,
+                access: accessors
+            }
+        } else {
+            expr.into_expr().expect("should be able to unwrap accessible expr")
+        }
+    }
+
+    fn access(pair: MyPair) -> Vec<Accessor> {
+        let mut accessors = vec![];
+        for accessor in pair.into_inner() {
+            match accessor.as_rule() {
+                Rule::property_access => {
+                    accessors.push(Accessor::Property{
+                        name: accessor.as_str().to_owned()
+                    });
+                },
+                Rule::function_access => {
+                    accessors.push(Accessor::Function{
+                        args: function_access(accessor)
+                    });
+                },
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+        accessors
+    }
+
+    fn function_access(pair: MyPair) -> Vec<Expression> {
+        let function_access_args = inner_pair(pair);
+        let mut args = vec![];
+        for expr in function_access_args.into_inner() {
+            args.push(expression(expr))
+        }
+        args
+    }
+
+    fn block_inner(pair: MyPair) -> Block {
+        let mut scope = HashMap::new();
+        let mut css = vec![];
+
+        for inner in pair.into_inner() {
+            match inner.as_rule() {
+                Rule::block_assignment => {
+                    match_rules!{inner,
+                        let var = block_variable_assign;
+                        let expr = expression;
+                    }
+                    scope.insert(variable_name_string(var),expression(expr));
+                },
+                Rule::block_expression => {
+                    let expression = expression(inner_pair(inner));
+                    css.push(CSSEntry::Expr( expression ));
+                },
+                Rule::block_css => {
+                    let block = block_css(inner_pair(inner));
+                    css.push(block);
+                },
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+
+        Block {
+            scope:scope,
+            css:css,
+            selector:vec![]
+        }
+    }
+
+    fn block(pair: MyPair) -> Expr {
+        match_rules!{pair,
+            let selector = block_selector;
+            let open = block_open;
+            let inner = block_inner;
+            let close = block_close;
+        }
+
+        let mut block = block_inner(inner);
+        block.selector = block_selector(selector);
+        Expr::Block(block)
+    }
+
+    fn block_selector(pair: MyPair) -> Vec<CSSBit> {
+        let mut out = vec![];
+        for inner in pair.into_inner() {
+            match inner.as_rule() {
+                Rule::block_selector_chars => {
+                    out.push(CSSBit::Str(inner.as_str().to_owned()));
+                },
+                Rule::block_interpolated_expression => {
+                    out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
+                },
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+        out
+    }
+
+    fn block_css(pair: MyPair) -> CSSEntry {
+        match_rules!{pair,
+            let key = block_css_key;
+            let val = block_css_value;
+        }
+        CSSEntry::KeyVal{
+            key: block_css_key(key),
+            val: block_css_value(val)
+        }
+    }
+
+    fn block_css_key(pair: MyPair) -> Vec<CSSBit> {
+        let mut out = vec![];
+        for inner in pair.into_inner() {
+            match inner.as_rule() {
+                Rule::block_css_key_chars => {
+                    out.push(CSSBit::Str( inner.as_str().trim().to_owned() ));
+                },
+                Rule::block_interpolated_expression => {
+                    out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
+                },
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+        out
+    }
+
+    fn block_css_value(pair: MyPair) -> Vec<CSSBit> {
+        let mut out = vec![];
+        for inner in pair.into_inner() {
+            match inner.as_rule() {
+                Rule::block_interpolated_expression | Rule::variable_accessor => {
+                    out.push(CSSBit::Expr( expression(inner_pair(inner)) ));
+                },
+                Rule::block_css_value_chars => {
+                    out.push(CSSBit::Str( inner.as_str().to_owned() ));
+                },
+                _ => {
+                    unreachable!();
+                }
+            }
+        }
+        out
+    }
+
 }
 
 //
@@ -410,6 +395,39 @@ fn escaped_string(s: &str) -> String {
         }
     }
     out
+}
+
+// look for a variable_name in the current tree, and return it as a Builtin Expression
+fn naked_variable_expression(pair: MyPair) -> Expression {
+    let span = pair.clone().into_span();
+    let tok = variable_name_string(pair);
+    Expression::with_position(
+        Position(span.start()),
+        Position(span.end()),
+        Expr::Var(tok, VarType::Builtin)
+    )
+}
+
+// Look for a variable_name rule in the pair we have been handed and return it, panicking
+// if we don't find one.
+fn variable_name_string(pair: MyPair) -> String {
+    match pair.as_rule() {
+        Rule::variable_name => {
+            pair.as_str().to_owned()
+        },
+        _ => {
+            match pair.into_inner().next() {
+                None => panic!("variable_name rule not found"),
+                Some(inner) => variable_name_string(inner)
+            }
+        }
+    }
+}
+
+// go one level down into a pair, giving back the first child pair or panicking if
+// one doesn't exist.
+fn inner_pair(pair: MyPair) -> MyPair {
+    pair.into_inner().next().unwrap()
 }
 
 /*
