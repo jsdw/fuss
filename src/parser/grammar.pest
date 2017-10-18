@@ -104,9 +104,9 @@ n = _{ ("\r" | "\n" | whitespace)* }
 N = _{ whitespace* ~ ("\r" | "\n")+ ~ n }
 
 // normal whitespace allowed is just tabs and spaces; we're explicit about newlines:
-whitespace = _{ (" " | "\t")+ }
+whitespace = _{ " " | "\t" }
 
 // allow block and "//" style comments
 comment = _{ block_comment | eol_comment }
-    block_comment = _{ "/*" ~ (block_comment | ( !(block_comment | "*/") ~ any))* ~ "*/" }
+    block_comment = _{ "/*" ~ (block_comment | (!"*/" ~ any))* ~ "*/" }
     eol_comment = _{ "//" ~ (!"\n" ~ any)* ~ "\n" }
