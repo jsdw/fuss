@@ -58,7 +58,8 @@ block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
 
     block_css = { block_css_key ~ ":" ~n~ block_css_value ~ block_end_stmt }
     block_selector = ${ ( block_interpolated_expression | block_selector_chars )* }
-        block_selector_chars = ${ ( !(("\n" ~ "\n") | ("(" ~n~ "{") | "$" | "{" | ";" | "}") ~ any )+ }
+        block_selector_chars = @{ ( !block_selector_not ~ any )+ }
+        block_selector_not = @{ "/*" | ("\n" ~ "\n") | ("(" ~n~ "{") | "$" | "{" | ";" | "}" }
 
     block_css_key = ${ (block_interpolated_expression | block_css_key_chars)+ }
         block_css_key_chars = ${ ( 'a'..'z' | "-" )+ }
@@ -103,10 +104,16 @@ n = _{ ("\r" | "\n" | whitespace)* }
 // matches and expects a newline.
 N = _{ whitespace* ~ ("\r" | "\n")+ ~ n }
 
-// normal whitespace allowed is just tabs and spaces; we're explicit about newlines:
-whitespace = _{ " " | "\t" }
+// normal whitespace allowed is just tabs and spaces; we're explicit about newlines.
+// "comment" rule seems to not be used at the moment, so we merge it with whitespace
+// manually here instead.
+whitespace = _{ " " | "\t" | a_comment }
 
-// allow block and "//" style comments
-comment = _{ block_comment | eol_comment }
-    block_comment = _{ "/*" ~ (block_comment | (!"*/" ~ any))* ~ "*/" }
+// allow "/* */" and "//" style comments
+// From the docs:
+//    a = { b ~ c }
+// Transforms into:
+//    a = { b ~ whitespace* ~ (comment? ~ whitespace+)* ~ c }
+a_comment = _{ block_comment | eol_comment }
+    block_comment = _{ "/*" ~ (!"*/" ~ (block_comment | any))* ~ "*/" }
     eol_comment = _{ "//" ~ (!"\n" ~ any)* ~ "\n" }

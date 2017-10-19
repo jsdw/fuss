@@ -1387,6 +1387,7 @@ mod test {
             $hello: ($a, $b) => $a + $b;
             $another: 2;
             $lark: { $sub1: 2px; };
+
             $more: $lark.sub1;
             /* block /* nested!! */ comment */
 
