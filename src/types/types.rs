@@ -57,8 +57,7 @@ pub enum BlockType {
 #[derive(PartialEq,Debug,Clone,Copy)]
 pub enum VarType {
     User,
-    Builtin,
-    Unknown
+    Builtin
 }
 
 /// Anything that's an Expression

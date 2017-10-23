@@ -98,9 +98,9 @@ impl Colour {
         }
     }
 
-    pub fn red(&self)   -> f64 { self.red }
-    pub fn green(&self) -> f64 { self.green }
-    pub fn blue(&self)  -> f64 { self.blue }
+    // pub fn red(&self)   -> f64 { self.red }
+    // pub fn green(&self) -> f64 { self.green }
+    // pub fn blue(&self)  -> f64 { self.blue }
     pub fn alpha(&self) -> f64 { self.alpha }
 
     pub fn red_u8(&self)   -> u8 { (self.red * 255.0).round() as u8 }

@@ -34,7 +34,7 @@ impl Scope {
         match ty {
             VarType::User => self.find_user(name),
             VarType::Builtin => self.find_builtin(name),
-            VarType::Unknown => self.find_user(name).or_else(|| self.find_builtin(name))
+            //VarType::Unknown => self.find_user(name).or_else(|| self.find_builtin(name))
         }
     }
     fn find_user<'a>(&'a self, name: &str) -> Option<&'a EvaluatedExpression> {

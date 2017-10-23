@@ -13,7 +13,6 @@ pub struct Error {
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum ErrorType {
-    NotAValidInnerBlock,
     CantFindVariable(String,VarType),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},

@@ -75,7 +75,7 @@ if_then_else = { "if" ~n~ expression ~n~ "then" ~n~ expression ~n~ "else" ~n~ ex
 
 function = { "(" ~n~ function_args? ~n~ ")" ~n~ "=>" ~n~ function_expression }
     function_args = { variable ~n~ ( "," ~n~ variable )* }
-    function_expression = { expression }
+    function_expression = _{ expression }
 
 variable_name = { ('a'..'z' | 'A'..'Z' | "_" | '0'..'9')+ }
 boolean = { boolean_true | boolean_false }
