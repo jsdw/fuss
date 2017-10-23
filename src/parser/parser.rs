@@ -14,25 +14,6 @@ struct MyGrammar;
 
 type MyPair<'a> = Pair<Rule,StrInput<'a>>;
 
-pub fn parse(input: &str) -> Result<Expression,ErrorType> {
-
-    match MyGrammar::parse_str(Rule::file, input) {
-        Ok(mut pairs) => {
-            // we expect the pairs inside the file rule (one block_inner) at this point,
-            // otherwise something has gone wrong.
-            let block_inner_token = pairs.next().expect("parsing a file: block_inner token expected");
-            Ok(to_expression(
-                block_inner_token.clone(),
-                Expr::Block(block_inner(block_inner_token))
-            ))
-        },
-        Err(e) => {
-            Err(ErrorType::ParseError(format!("{}", e)))
-        }
-    }
-
-}
-
 macro_rules! match_rules {
     ($pair:expr, $(let $var:ident = $rule:ident);+ $(;)* ) => {
         let mut iter = $pair.into_inner();
@@ -52,6 +33,28 @@ macro_rules! parser_rules {
             }
         )+
     )
+}
+
+pub fn parse(input: &str) -> Result<Expression,ErrorType> {
+
+    match MyGrammar::parse_str(Rule::file, input) {
+        Ok(mut pairs) => {
+            match_rules!{pairs.next().expect("expecting a file token"),
+                let file_pair = file;
+            }
+            match_rules!{file_pair,
+                let block_pair = block_inner;
+            }
+            Ok(to_expression(
+                block_pair.clone(),
+                Expr::Block(block_inner(block_pair))
+            ))
+        },
+        Err(e) => {
+            Err(ErrorType::ParseError(format!("{}", e)))
+        }
+    }
+
 }
 
 fn primary_expression(pair: MyPair) -> Expression {
