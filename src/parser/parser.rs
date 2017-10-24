@@ -19,7 +19,7 @@ macro_rules! match_rules {
         let mut iter = $pair.into_inner();
         $(
             let $var = iter.next().unwrap();
-            assert!($var.as_rule() == Rule::$rule, "match_rules expected the rule {:?} but got {:?}", stringify!($rule), Rule::$rule);
+            assert!($var.as_rule() == Rule::$rule, "match_rules expected the rule '{}' but got '{:?}'", stringify!($rule), $var.as_rule());
         )*
     }
 }
@@ -28,7 +28,7 @@ macro_rules! parser_rules {
         $(
             fn $rule($pair: MyPair) -> $resTy {
                 let r = $pair.as_rule();
-                assert!(r == Rule::$rule, "parser_rules function '{}' expected the rule {:?}, but got {:?}", stringify!($rule), Rule::$rule, r);
+                assert!(r == Rule::$rule, "parser_rules function '{}' expected the rule '{:?}', but got '{:?}'", stringify!($rule), Rule::$rule, r);
                 $block
             }
         )+
@@ -39,10 +39,7 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
 
     match MyGrammar::parse_str(Rule::file, input) {
         Ok(mut pairs) => {
-            match_rules!{pairs.next().expect("expecting a file token"),
-                let file_pair = file;
-            }
-            match_rules!{file_pair,
+            match_rules!{pairs.next().unwrap(),
                 let block_pair = block_inner;
             }
             Ok(to_expression(
@@ -119,8 +116,8 @@ fn primary_expression(pair: MyPair) -> Expression {
         Rule::undefined => {
             to_expression(pair.clone(), Expr::Undefined)
         },
-        _ => {
-            unreachable!()
+        r => {
+            unreachable!("primary_expression did not expect to get a {:?} rule", r)
         }
     }
 }
@@ -350,7 +347,7 @@ parser_rules!{
         for inner in pair.into_inner() {
             match inner.as_rule() {
                 Rule::block_interpolated_expression | Rule::variable_accessor => {
-                    out.push(CSSBit::Expr( primary_expression(inner) ));
+                    out.push(CSSBit::Expr( primary_expression(inner_pair(inner)) ));
                 },
                 Rule::block_css_value_chars => {
                     out.push(CSSBit::Str( inner.as_str().to_owned() ));
