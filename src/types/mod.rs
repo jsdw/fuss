@@ -2,7 +2,6 @@ mod colour;
 mod types;
 mod scope;
 mod errors;
-mod position;
 mod list;
 
 pub use self::colour::*;
