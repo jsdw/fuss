@@ -3,6 +3,10 @@ use std::convert::Into;
 use types::position::Position;
 use types::{EvaluatedExpr,VarType};
 
+// Usage:
+// import errors::*;
+// Error::new(ApplicationError::NotAFunction, Location::at(0,100))
+//
 // An error has a position and an underlying cause. Anything that
 // can be turned into a SomeError (including this) can be wrapped in
 // this struct, to build up a stack trace. It's intended that one
@@ -10,24 +14,45 @@ use types::{EvaluatedExpr,VarType};
 // errors::Shape/Application etc, or a pre-existing Error.
 #[derive(Clone,PartialEq,Debug)]
 pub struct Error {
-    position: Box<Position>,
+    location: Box<Location>,
     cause: Box<SomeError>
 }
 
-pub fn new<E: Into<SomeError>>(err: E, pos: Position) -> Error {
-    Context{
-        position: Box::new(pos),
-        cause: Box::new(err.into())
+impl Error {
+    pub fn new<E: Into<SomeError>>(err: E, pos: Location) -> Error {
+        Context{
+            location: Box::new(pos),
+            cause: Box::new(err.into())
+        }
     }
 }
 
 // Where an error happened.
 #[derive(Clone,PartialEq,Debug)]
-pub struct Position {
-    pub start: usize,
-    pub end: usize,
-    pub file: PathBuf,
-    pub function: String,
+pub struct Location {
+    start: usize,
+    end: usize,
+    file: PathBuf,
+    function: String,
+}
+
+impl Location {
+    pub fn at(start: usize, end: usize) -> Location {
+        Location {
+            start: start,
+            end: end,
+            file: PathBuf::new(),
+            function: String::new()
+        }
+    }
+    pub fn file(mut self, f: PathBuf) -> Location {
+        self.file = f;
+        self
+    }
+    pub fn func(mut self, f: String) -> Location {
+        self.function = f;
+        self
+    }
 }
 
 // An error falls into one of these categories,
@@ -35,31 +60,31 @@ pub struct Position {
 // error.
 #[derive(Clone,PartialEq,Debug)]
 enum SomeError {
-    Application(Application),
-    Import(Import),
-    Shape(Shape),
-    Syntax(Syntax),
+    ApplicationError(ApplicationError),
+    ImportError(ImportError),
+    ShapeError(ShapeError),
+    SyntaxError(SyntaxError),
     Context(Error)
 }
 
-impl From<Application> for SomeError {
-    fn from(err: Application) -> Self {
-        SomeError::Application(err)
+impl From<ApplicationError> for SomeError {
+    fn from(err: ApplicationError) -> Self {
+        SomeError::ApplicationError(err)
     }
 }
-impl From<Import> for SomeError {
-    fn from(err: Import) -> Self {
-        SomeError::Import(err)
+impl From<ImportError> for SomeError {
+    fn from(err: ImportError) -> Self {
+        SomeError::ImportError(err)
     }
 }
-impl From<Shape> for SomeError {
-    fn from(err: Shape) -> Self {
-        SomeError::Shape(err)
+impl From<ShapeError> for SomeError {
+    fn from(err: ShapeError) -> Self {
+        SomeError::ShapeError(err)
     }
 }
-impl From<Syntax> for SomeError {
-    fn from(err: Syntax) -> Self {
-        SomeError::Syntax(err)
+impl From<SyntaxError> for SomeError {
+    fn from(err: SyntaxError) -> Self {
+        SomeError::SyntaxError(err)
     }
 }
 impl From<Error> for SomeError {
@@ -67,15 +92,10 @@ impl From<Error> for SomeError {
         SomeError::Context(err)
     }
 }
-impl From<Error> for SomeError {
-    fn from(err: Error) -> Self {
-        (*err.inner).into()
-    }
-}
 
 // Errors applying functions.
 #[derive(Clone,PartialEq,Debug)]
-pub enum Application {
+pub enum ApplicationError {
     CantFindVariable(String,VarType),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
@@ -84,7 +104,7 @@ pub enum Application {
     UnitMismatch
 }
 
-// Errors importing things.
+// Errors importErroring things.
 #[derive(Clone,PartialEq,Debug)]
 pub enum Import {
     CannotImportNoPathSet
@@ -97,7 +117,7 @@ pub enum Import {
 
 // Errors with the shaoe of the formed CSS.
 #[derive(Clone,PartialEq,Debug)]
-pub enum Shape {
+pub enum ShapeError {
     KeyframesKeyvalsNotAllowedAtTop,
     KeyframesKeyframesBlockNotAllowed,
     KeyframesFontFaceBlockNotAllowed,
@@ -110,6 +130,6 @@ pub enum Shape {
 
 // Errors parsing the syntax into an AST.
 #[derive(Clone,PartialEq,Debug)]
-pub enum Syntax {
+pub enum SyntaxError {
     ParseError(String)
 }
