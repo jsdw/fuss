@@ -11,17 +11,18 @@ pub fn add(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     match (&args[0].expr, &args[1].expr) {
         (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) => {
-
             let unit = pick_unit(au,bu)?;
             Ok(EvaluatedExpr::Unit(a + b, unit))
-
         },
         (&EvaluatedExpr::Str(ref a), &EvaluatedExpr::Str(ref b)) => {
-
             Ok(EvaluatedExpr::Str(a.to_owned() + b))
-
         },
-        _ => ApplicationError::WrongKindOfArguments{ message: "only numbers and strings can be added together".to_owned() }.into()
+        (_,&EvaluatedExpr::Str{..}) | (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str,Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Str,Kind::Unit], got: args[1].expr.kind() }.into()
+        }
     }
 
 }
@@ -38,20 +39,23 @@ pub fn subtract(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes 
         if let EvaluatedExpr::Unit(a, ref au) = a.expr {
             Ok(EvaluatedExpr::Unit(-a, au.to_owned()))
         } else {
-            ApplicationError::WrongKindOfArguments{ message: "unary '-' can only be used on numbers".to_owned() }.into()
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[0].expr.kind() }.into()
         }
 
     } else if len == 2 {
 
-        if let (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) = (&args[0].expr,&args[1].expr) {
-
-            let unit = pick_unit(au,bu)?;
-            Ok(EvaluatedExpr::Unit(a - b, unit))
-
-        } else {
-            ApplicationError::WrongKindOfArguments{ message: "only numbers can be minused from eachother".to_owned() }.into()
+        match (&args[0].expr,&args[1].expr) {
+            (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) => {
+                let unit = pick_unit(au,bu)?;
+                Ok(EvaluatedExpr::Unit(a - b, unit))
+            },
+            (_,&EvaluatedExpr::Unit{..}) => {
+                ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[0].expr.kind() }.into()
+            },
+            _ => {
+                ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[1].expr.kind() }.into()
+            }
         }
-
 
     } else {
         ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into()
@@ -66,13 +70,17 @@ pub fn divide(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
         return ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into();
     }
 
-    if let (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) = (&args[0].expr,&args[1].expr) {
-
-        let unit = pick_unit(au,bu)?;
-        Ok(EvaluatedExpr::Unit(a / b, unit))
-
-    } else {
-        ApplicationError::WrongKindOfArguments{ message: "only numbers can be divided with eachother".to_owned() }.into()
+    match (&args[0].expr,&args[1].expr) {
+        (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) => {
+            let unit = pick_unit(au,bu)?;
+            Ok(EvaluatedExpr::Unit(a / b, unit))
+        },
+        (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[1].expr.kind() }.into()
+        }
     }
 
 }
@@ -84,13 +92,17 @@ pub fn multiply(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes 
         return ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into();
     }
 
-    if let (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) = (&args[0].expr,&args[1].expr) {
-
-        let unit = pick_unit(au,bu)?;
-        Ok(EvaluatedExpr::Unit(a * b, unit))
-
-    } else {
-        ApplicationError::WrongKindOfArguments{ message: "only numbers can be multiplied with eachother".to_owned() }.into()
+    match (&args[0].expr,&args[1].expr) {
+        (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) => {
+            let unit = pick_unit(au,bu)?;
+            Ok(EvaluatedExpr::Unit(a * b, unit))
+        },
+        (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[1].expr.kind() }.into()
+        }
     }
 
 }
@@ -102,13 +114,17 @@ pub fn pow(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
         return ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into();
     }
 
-    if let (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) = (&args[0].expr,&args[1].expr) {
-
-        let unit = pick_unit(au,bu)?;
-        Ok(EvaluatedExpr::Unit(a.powf(b), unit))
-
-    } else {
-        ApplicationError::WrongKindOfArguments{ message: "only numbers can be divided with eachother".to_owned() }.into()
+    match (&args[0].expr,&args[1].expr) {
+        (&EvaluatedExpr::Unit(a, ref au), &EvaluatedExpr::Unit(b, ref bu)) => {
+            let unit = pick_unit(au,bu)?;
+            Ok(EvaluatedExpr::Unit(a.powf(b), unit))
+        },
+        (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Unit], got: args[1].expr.kind() }.into()
+        }
     }
 
 }
@@ -162,8 +178,10 @@ pub fn greater_than(args: &Vec<EvaluatedExpression>, _context: &Context) -> Prim
         (&EvaluatedExpr::Str(ref a), &EvaluatedExpr::Str(ref b)) => {
             Ok(EvaluatedExpr::Bool(a > b))
         },
-        _ => ApplicationError::WrongKindOfArguments{ message: "only numbers and strings can be compared with '>'".to_owned() }.into()
-    }
+        (_,&EvaluatedExpr::Str{..}) | (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str,Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Str,Kind::Unit], got: args[1].expr.kind() }.into()    }
 
 }
 
@@ -181,8 +199,10 @@ pub fn greater_than_or_equal(args: &Vec<EvaluatedExpression>, _context: &Context
         (&EvaluatedExpr::Str(ref a), &EvaluatedExpr::Str(ref b)) => {
             Ok(EvaluatedExpr::Bool(a >= b))
         },
-        _ => ApplicationError::WrongKindOfArguments{ message: "only numbers and strings can be compared with '>='".to_owned() }.into()
-    }
+        (_,&EvaluatedExpr::Str{..}) | (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str,Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Str,Kind::Unit], got: args[1].expr.kind() }.into()    }
 
 }
 
@@ -200,8 +220,10 @@ pub fn less_than(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes
         (&EvaluatedExpr::Str(ref a), &EvaluatedExpr::Str(ref b)) => {
             Ok(EvaluatedExpr::Bool(a < b))
         },
-        _ => ApplicationError::WrongKindOfArguments{ message: "only numbers and strings can be compared with '<'".to_owned() }.into()
-    }
+        (_,&EvaluatedExpr::Str{..}) | (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str,Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Str,Kind::Unit], got: args[1].expr.kind() }.into()    }
 
 }
 
@@ -219,8 +241,10 @@ pub fn less_than_or_equal(args: &Vec<EvaluatedExpression>, _context: &Context) -
         (&EvaluatedExpr::Str(ref a), &EvaluatedExpr::Str(ref b)) => {
             Ok(EvaluatedExpr::Bool(a <= b))
         },
-        _ => ApplicationError::WrongKindOfArguments{ message: "only numbers and strings can be compared with '<='".to_owned() }.into()
-    }
+        (_,&EvaluatedExpr::Str{..}) | (_,&EvaluatedExpr::Unit{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str,Kind::Unit], got: args[0].expr.kind() }.into()
+        },
+        _ => ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Str,Kind::Unit], got: args[1].expr.kind() }.into()    }
 
 }
 
@@ -231,10 +255,16 @@ pub fn boolean_and(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimR
         return ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into();
     }
 
-    if let (&EvaluatedExpr::Bool(a), &EvaluatedExpr::Bool(b)) = (&args[0].expr,&args[1].expr) {
-        Ok(EvaluatedExpr::Bool(a && b))
-    } else {
-        ApplicationError::WrongKindOfArguments{ message: "only booleans can be &&'d".to_owned() }.into()
+    match (&args[0].expr,&args[1].expr) {
+        (&EvaluatedExpr::Bool(a), &EvaluatedExpr::Bool(b)) => {
+            Ok(EvaluatedExpr::Bool(a && b))
+        },
+        (_,&EvaluatedExpr::Bool{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Bool], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Bool], got: args[1].expr.kind() }.into()
+        }
     }
 
 }
@@ -246,10 +276,16 @@ pub fn boolean_or(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRe
         return ApplicationError::WrongNumberOfArguments{ expected: 2, got: args.len() }.into();
     }
 
-    if let (&EvaluatedExpr::Bool(a), &EvaluatedExpr::Bool(b)) = (&args[0].expr,&args[1].expr) {
-        Ok(EvaluatedExpr::Bool(a || b))
-    } else {
-        ApplicationError::WrongKindOfArguments{ message: "only booleans can be ||'d".to_owned() }.into()
+    match (&args[0].expr,&args[1].expr) {
+        (&EvaluatedExpr::Bool(a), &EvaluatedExpr::Bool(b)) => {
+            Ok(EvaluatedExpr::Bool(a || b))
+        },
+        (_,&EvaluatedExpr::Bool{..}) => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Bool], got: args[0].expr.kind() }.into()
+        },
+        _ => {
+            ApplicationError::WrongKindOfArguments{ index: 1, expected: vec![Kind::Bool], got: args[1].expr.kind() }.into()
+        }
     }
 
 }

@@ -49,7 +49,7 @@ pub fn parse(input: &str) -> Result<Expression,ErrorKind> {
             ))
         },
         Err(e) => {
-            Err(SyntaxError::ParseError(format!("{}", e)))
+            SyntaxError::ParseError(format!("{}", e)).into()
         }
     }
 

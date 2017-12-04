@@ -29,7 +29,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
         Expr::Var(ref name, ty) => {
 
             scope.find(name, ty).map_or(
-                err(ApplicationError::CantFindVariable(name.clone(), ty), Location::at(e.start,e.end)),
+                Err(err(ApplicationError::CantFindVariable(name.clone(), ty), Location::at(e.start,e.end))),
                 |var| { Ok(var.clone()) }
             )
 
@@ -43,7 +43,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             use prelude::casting::raw_boolean;
             let is_true = match raw_boolean(&cond.expr){
                 Ok(b) => Ok(b),
-                Err(e) => err(e, Location::at(cond.start, cond.end))
+                Err(e) => Err(err(e, Location::at(cond.start, cond.end)))
             }?;
 
             if is_true {
@@ -89,7 +89,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                 }
                             }
                         } else {
-                            return err(ApplicationError::PropertyDoesNotExist(name.to_owned()), Location::at(e.start, e.end));
+                            return Err(err(ApplicationError::PropertyDoesNotExist(name.to_owned()), Location::at(e.start, e.end)));
                         };
 
                     },
@@ -111,10 +111,10 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // complain if too many args are provided:
                                 if arg_names.len() != simplified_args.len() {
-                                    return err(ApplicationError::WrongNumberOfArguments{
+                                    return Err(err(ApplicationError::WrongNumberOfArguments{
                                         expected: arg_names.len(),
                                         got: simplified_args.len()
-                                    }, Location::at(e.start, e.end));
+                                    }, Location::at(e.start, e.end)));
                                 }
 
                                 // create scope containing simplified args to make use of in function body expr:
@@ -132,12 +132,12 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                 // primitive func? just run it on the args then!
                                 curr = match func.0(&simplified_args, context) {
                                     Ok(res) => Ok(expression_from!{e, res}),
-                                    Err(err) => err(err, Location::at(e.start, e.end))
+                                    Err(error) => Err(err(error, Location::at(e.start, e.end)))
                                 }?;
 
                             }
                             _ => {
-                                return err(ApplicationError::NotAFunction, Location::at(e.start, e.end));
+                                return Err(err(ApplicationError::NotAFunction, Location::at(e.start, e.end)));
                             }
                         }
                     }
@@ -329,7 +329,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
                 use prelude::casting::raw_string;
                 let s = match raw_string(&e.expr) {
                     Ok(s) => Ok(s),
-                    Err(err) => err(err, Location::at(e.start, e.end))
+                    Err(error) => Err(err(error, Location::at(e.start, e.end)))
                 }?;
                 string.push(s);
             }
@@ -354,7 +354,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    _ => return err(ShapeError::NotACSSBlock, Location::at(css_expr.start,css_expr.end))
+                    _ => return Err(err(ShapeError::NotACSSBlock, Location::at(css_expr.start,css_expr.end)))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val} => {

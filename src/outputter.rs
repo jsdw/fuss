@@ -303,13 +303,15 @@ impl Items {
                 },
 
                 EvaluatedCSSEntry::Block(block) => {
+                    let start = block.start;
+                    let end = block.end;
                     match block.ty {
                         BlockType::Keyframes => {
 
                             let k = if loc.media.len() == 0 { &mut self.keyframes } else { &mut keyframes };
 
                             k.push(match handle_keyframes(block) {
-                                Err(e) => err(e, Location::at(block.start, block.end)),
+                                Err(e) => Err(err(e, Location::at(start, end))),
                                 Ok(v) => Ok(v)
                             });
 
@@ -319,7 +321,7 @@ impl Items {
                             let v = if loc.media.len() == 0 { &mut self.fontfaces } else { &mut fontfaces };
 
                             v.push(match handle_fontface(block) {
-                                Err(e) => err(e, Location::at(block.start, block.end)),
+                                Err(e) => Err(err(e, Location::at(start, end))),
                                 Ok(v) => Ok(v)
                             });
 
