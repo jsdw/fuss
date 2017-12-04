@@ -303,17 +303,13 @@ impl Items {
                 },
 
                 EvaluatedCSSEntry::Block(block) => {
-
-                    struct Pos{ start: 0, end: 0 };
-                    let pos = Pos{ start: block.start, end: block.end };
-
                     match block.ty {
                         BlockType::Keyframes => {
 
                             let k = if loc.media.len() == 0 { &mut self.keyframes } else { &mut keyframes };
 
                             k.push(match handle_keyframes(block) {
-                                Err(e) => err!(pos, e),
+                                Err(e) => err(e, Location::at(block.start, block.end)),
                                 Ok(v) => Ok(v)
                             });
 
@@ -323,7 +319,7 @@ impl Items {
                             let v = if loc.media.len() == 0 { &mut self.fontfaces } else { &mut fontfaces };
 
                             v.push(match handle_fontface(block) {
-                                Err(e) => err!(pos, e),
+                                Err(e) => err(e, Location::at(block.start, block.end)),
                                 Ok(v) => Ok(v)
                             });
 
@@ -371,18 +367,18 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
     for item in block.css {
         match item {
             EvaluatedCSSEntry::KeyVal{..} => {
-                return Err(ShapeError::KeyframesKeyvalsNotAllowedAtTop.into());
+                return ShapeError::KeyframesKeyvalsNotAllowedAtTop.into();
             },
             EvaluatedCSSEntry::Block(block) => {
                 match block.ty {
                     BlockType::Keyframes => {
-                        return Err(ShapeError::KeyframesKeyframesBlockNotAllowed.into());
+                        return ShapeError::KeyframesKeyframesBlockNotAllowed.into();
                     },
                     BlockType::FontFace => {
-                        return Err(ShapeError::KeyframesFontFaceBlockNotAllowed.into());
+                        return ShapeError::KeyframesFontFaceBlockNotAllowed.into();
                     },
                     BlockType::Media => {
-                        return Err(ShapeError::KeyframesMediaBlockNotAllowed.into());
+                        return ShapeError::KeyframesMediaBlockNotAllowed.into();
                     },
                     BlockType::Generic => {
                         let mut keyvals = vec![];
@@ -392,7 +388,7 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
                                     keyvals.push( (key,val) );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
-                                    return Err(ShapeError::KeyframesNestedBlockNotAllowed.into());
+                                    return ShapeError::KeyframesNestedBlockNotAllowed.into();
                                 }
                             }
                         }
@@ -421,7 +417,7 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
                 keyvals.push( (key,val) );
             },
             EvaluatedCSSEntry::Block(_) => {
-                return Err(ShapeError::FontfaceBlockNotAllowed.into());
+                return ShapeError::FontfaceBlockNotAllowed.into();
             }
         }
     }

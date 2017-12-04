@@ -69,6 +69,32 @@ pub enum ErrorKind {
     Context(Error)
 }
 
+impl <T> Into<Result<T,ErrorKind>> for ErrorKind {
+    fn into(self: ErrorKind) -> Result<T,ErrorKind> {
+        Err(self)
+    }
+}
+impl <T> Into<Result<T,ErrorKind>> for ApplicationError {
+    fn into(self: ApplicationError) -> Result<T,ErrorKind> {
+        Err(self.into())
+    }
+}
+impl <T> Into<Result<T,ErrorKind>> for ImportError {
+    fn into(self: ImportError) -> Result<T,ErrorKind> {
+        Err(self.into())
+    }
+}
+impl <T> Into<Result<T,ErrorKind>> for ShapeError {
+    fn into(self: ShapeError) -> Result<T,ErrorKind> {
+        Err(self.into())
+    }
+}
+impl <T> Into<Result<T,ErrorKind>> for SyntaxError {
+    fn into(self: SyntaxError) -> Result<T,ErrorKind> {
+        Err(self.into())
+    }
+}
+
 impl From<ApplicationError> for ErrorKind {
     fn from(err: ApplicationError) -> Self {
         ErrorKind::ApplicationError(err)
@@ -102,6 +128,7 @@ pub enum ApplicationError {
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
     WrongKindOfArguments{index: usize, expected: Vec<Kind>, got: Kind},
+    WrongUnitOfArguments{index: usize, expected: Vec<String>, got: String},
     PropertyDoesNotExist(String),
     UnitMismatch
 }

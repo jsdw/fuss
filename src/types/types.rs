@@ -5,8 +5,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
 use types::colour;
-use types::errors;
 use types::scope::{Scope};
+use errors::*;
 
 /// Unevaluated blocks and their parts
 #[derive(PartialEq,Debug,Clone)]
@@ -116,14 +116,15 @@ pub enum EvaluatedExpr {
 
 impl EvaluatedExpr {
     pub fn kind(&self) -> Kind {
+        use self::EvaluatedExpr::*;
         match *self {
-            Str(..) => Kind::Str,
-            Bool(..) => Kind::Bool,
-            Unit(..) => Kind::Unit,
-            Colour(..) => Kind::Colour,
+            Str{..} => Kind::Str,
+            Bool{..} => Kind::Bool,
+            Unit{..} => Kind::Unit,
+            Colour{..} => Kind::Colour,
             Undefined => Kind::Undefined,
-            PrimFunc(..) | Func(..) => Kind::Func,
-            Block(..) => Kind::Block
+            PrimFunc{..} | Func{..} => Kind::Func,
+            Block{..} => Kind::Block
         }
     }
 }
@@ -186,7 +187,7 @@ impl <E: PartialEq> PartialEq for ExpressionOuter<E> {
 /// Wrap our primfuncs into a struct so that we can implement basic
 /// traits on them, since they can't be derived automatically.
 pub struct PrimFunc(pub fn(&Vec<EvaluatedExpression>,&Context) -> PrimRes);
-pub type PrimRes = Result<EvaluatedExpr,errors::ErrorType>;
+pub type PrimRes = Result<EvaluatedExpr,ErrorKind>;
 
 impl Clone for PrimFunc {
     fn clone(&self) -> PrimFunc {

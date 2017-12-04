@@ -11,10 +11,10 @@ use std::path::PathBuf;
 pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
 
     if args.len() > 1 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() });
+        return ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into()
     }
     if !context.path.is_file() || !context.root.is_file() {
-        return Err(ImportError::CannotImportNoPathSet);
+        return ImportError::CannotImportNoPathSet.into()
     }
 
     // expect a string input:
@@ -64,21 +64,21 @@ fn import_path(mut context: Context) -> PrimRes {
     context.path.set_extension("fuss");
 
     if context.last.iter().any(|p| p == &context.path) {
-        return Err(ErrorType::ImportLoop(context.last.clone(), context.path.clone()))
+        return ImportError::ImportLoop(context.last.clone(), context.path.clone()).into()
     }
 
     if let None = context.path.file_name() {
-        return Err(ErrorType::CannotOpenFile(context.path.clone()));
+        return ImportError::CannotOpenFile(context.path.clone()).into();
     }
 
     if context.file_cache.exists(&context.path) {
         return Ok( context.file_cache.get(&context.path).unwrap() );
     }
 
-    let mut file = File::open(&context.path).map_err(|_| ErrorType::CannotOpenFile(context.path.clone()))?;
+    let mut file = File::open(&context.path).map_err(|_| ImportError::CannotOpenFile(context.path.clone()))?;
 
     let mut file_contents = String::new();
-    file.read_to_string(&mut file_contents).map_err(|_| ErrorType::CannotReadFile(context.path.clone()))?;
+    file.read_to_string(&mut file_contents).map_err(|_| ImportError::CannotReadFile(context.path.clone()))?;
     import_path_with_string(context, file_contents)
 
 }
@@ -87,15 +87,12 @@ fn import_path_with_string(context: Context, contents: String) -> PrimRes {
 
     // let res = parse(&input);
     let res = match parse(&contents) {
-        Ok(expr) => eval(&expr, super::get_prelude(), &context).map_err(|mut e| {
-            e.file = context.path.clone();
-            e
-        }),
-        Err(e) => Err(err(e, Location::at(0,0).file(context.path.clone()))
+        Ok(expr) => eval(&expr, super::get_prelude(), &context),//.map_err(|mut e| e.file(context.path.clone())),
+        Err(e) => Err(err(e, Location::at(0,0).file(context.path.clone())))
     };
 
     // return either the Expr or an ImportError which wraps the import issue.
-    res.map_err(|e| ImportError::Import(Box::new(e).into())
+    res.map_err(|e| ImportError::Import(Box::new(e)).into())
        .map(|e| {
            let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
            context.file_cache.set(context.path.clone(), expr.clone());

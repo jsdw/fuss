@@ -5,31 +5,38 @@ use errors::*;
 pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() < 3 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() });
+        return ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() }.into();
     }
     if args.len() > 4 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() });
+        return ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() }.into();
     }
 
-    let get_number = |e: &'a EvaluatedExpression| {
+    let get_number = |idx, e: &'a EvaluatedExpression| {
         match e.expr {
             EvaluatedExpr::Unit(val, ref unit) => {
                 Ok( (val, &**unit) )
             }
-            _ => Err(ErrorType::WrongTypeOfArguments{ message: "numbers required".to_owned() })
+            _ => ApplicationError::WrongKindOfArguments{
+                index: idx,
+                expected: vec![Kind::Unit],
+                got: e.expr.kind()
+            }.into()
         }
     };
 
-    let (mut red,   red_unit)   = get_number(&args[0])?;
-    let (mut green, green_unit) = get_number(&args[1])?;
-    let (mut blue,  blue_unit)  = get_number(&args[2])?;
-    let (mut alpha, alpha_unit) = if args.len() > 3 { get_number(&args[3])? } else { (1.0,"") };
+    let (mut red,   red_unit)   = get_number(0,&args[0])?;
+    let (mut green, green_unit) = get_number(1,&args[1])?;
+    let (mut blue,  blue_unit)  = get_number(2,&args[2])?;
+    let (mut alpha, alpha_unit) = if args.len() > 3 { get_number(3, &args[3])? } else { (1.0,"") };
 
-    if red_unit != blue_unit || blue_unit != green_unit || (red_unit != "%" && red_unit != "") {
-        return Err(ErrorType::WrongTypeOfArguments{ message: "all values must be either percentages or unitless numbers".to_owned() })
+    if red_unit != blue_unit || blue_unit != green_unit {
+        return ApplicationError::UnitMismatch.into();
+    }
+    if red_unit != "%" && red_unit != "" {
+        return ApplicationError::WrongUnitOfArguments{ index: 0, expected: vec!["%".to_owned(), "".to_owned()], got: red_unit.to_owned() }.into()
     }
     if alpha_unit != "%" && alpha_unit != "" {
-        return Err(ErrorType::WrongTypeOfArguments{ message: "alpha value is expected to be a percentage or unitless number".to_owned() })
+        return ApplicationError::WrongUnitOfArguments{ index: 3, expected: vec!["%".to_owned(), "".to_owned()], got: alpha_unit.to_owned() }.into()
     }
 
     if red_unit == "" {
@@ -54,34 +61,37 @@ pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
 pub fn hsla<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() < 3 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() });
+        return ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() }.into();
     }
     if args.len() > 4 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() });
+        return ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() }.into();
     }
 
-    let get_number = |e: &'a EvaluatedExpression| {
+    let get_number = |idx, e: &'a EvaluatedExpression| {
         match e.expr {
             EvaluatedExpr::Unit(val, ref unit) => {
                 Ok( (val, &**unit) )
             }
-            _ => Err(ErrorType::WrongTypeOfArguments{ message: "numbers required".to_owned() })
+            _ => ApplicationError::WrongKindOfArguments{ index: idx, expected: vec![Kind::Unit], got: e.expr.kind() }.into()
         }
     };
 
-    let (hue,   hue_unit)   = get_number(&args[0])?;
-    let (sat,   sat_unit)   = get_number(&args[1])?;
-    let (light, light_unit) = get_number(&args[2])?;
-    let (mut alpha, alpha_unit) = if args.len() > 3 { get_number(&args[3])? } else { (1.0,"") };
+    let (hue,   hue_unit)   = get_number(0, &args[0])?;
+    let (sat,   sat_unit)   = get_number(1, &args[1])?;
+    let (light, light_unit) = get_number(2, &args[2])?;
+    let (mut alpha, alpha_unit) = if args.len() > 3 { get_number(3, &args[3])? } else { (1.0,"") };
 
     if hue_unit != "" && hue_unit != "deg" {
-        return Err(ErrorType::WrongTypeOfArguments{ message: "hue is expected to be unitless or degrees".to_owned() })
+        return ApplicationError::WrongUnitOfArguments{ index: 0, expected: vec!["".to_owned(), "deg".to_owned()], got: hue_unit.to_owned() }.into()
     }
-    if sat_unit != "%" || light_unit != "%" {
-        return Err(ErrorType::WrongTypeOfArguments{ message: "saturation and lightness should be percentages".to_owned() })
+    if sat_unit != "%" {
+        return ApplicationError::WrongUnitOfArguments{ index: 1, expected: vec!["%".to_owned()], got: sat_unit.to_owned() }.into()
+    }
+    if light_unit != "%" {
+        return ApplicationError::WrongUnitOfArguments{ index: 2, expected: vec!["%".to_owned()], got: light_unit.to_owned() }.into()
     }
     if alpha_unit != "%" && alpha_unit != "" {
-        return Err(ErrorType::WrongTypeOfArguments{ message: "alpha value is expected to be a percentage or unitless number".to_owned() })
+        return ApplicationError::WrongUnitOfArguments{ index: 3, expected: vec!["".to_owned(), "%".to_owned()], got: alpha_unit.to_owned() }.into()
     }
     if alpha_unit == "%" {
         alpha = alpha / 100.0;

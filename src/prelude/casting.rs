@@ -5,7 +5,7 @@ use errors::*;
 pub fn boolean(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into());
+        return ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into();
     }
 
     let raw = raw_boolean(&args[0].expr)?;
@@ -17,7 +17,7 @@ pub fn boolean(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 pub fn string(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
-        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into());
+        return ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into();
     }
 
     let raw = raw_string(&args[0].expr)?;
@@ -36,7 +36,7 @@ pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorKind> {
         EvaluatedExpr::Colour(ref col) => {
             Ok(format!["rgba({},{},{},{})", col.red_u8(), col.green_u8(), col.blue_u8(), col.alpha()])
         },
-        _ => Err(ShapeError::InvalidExpressionInCssValue(Box::new(e.to_owned())).into())
+        _ => ShapeError::InvalidExpressionInCssValue(Box::new(e.to_owned())).into()
     }
 }
 
