@@ -1,4 +1,5 @@
 use types::*;
+use errors::*;
 use std::collections::HashMap;
 
 /// merge variables declared in blocks, outputting a single block. Ignore Undefined variables.
@@ -10,13 +11,15 @@ pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
     let mut selector = String::new();
     let mut seen_first = false;
 
-    for e in args {
+    for (idx,e) in args.iter().enumerate() {
         match e.expr {
             EvaluatedExpr::Undefined => {
                 if !seen_first {
-                    return Err(ErrorType::WrongTypeOfArguments{
-                        message: "the first argument should not be undefined".to_owned()
-                    });
+                    return Err(ApplicationError::WrongKindOfArguments{
+                        index: idx,
+                        expected: vec![Kind::Block],
+                        got: Kind::Undefined
+                    }.into());
                 }
             },
             EvaluatedExpr::Block(ref block) => {
@@ -33,9 +36,11 @@ pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
                 }
             },
             _ => {
-                return Err(ErrorType::WrongTypeOfArguments{
-                    message: "only accepts css blocks or undefined variables".to_owned()
-                });
+                return Err(ApplicationError::WrongKindOfArguments{
+                    index: idx,
+                    expected: vec![Kind::Block],
+                    got: e.expr.kind()
+                }.into());
             }
         }
         seen_first = true;
@@ -43,8 +48,8 @@ pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     Ok(EvaluatedExpr::Block(EvaluatedBlock{
         ty: ty,
-        start: Position::new(),
-        end: Position::new(),
+        start: 0,
+        end: 0,
         scope: scope,
         selector: selector,
         css: css

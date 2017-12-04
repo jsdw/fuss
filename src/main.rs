@@ -13,6 +13,7 @@ mod evaluator;
 mod cache;
 mod outputter;
 mod prelude;
+mod errors;
 
 use clap::App;
 // this imports and evaluates a FUSS file:
@@ -20,6 +21,7 @@ use prelude::import::{import_root,import_string};
 use std::convert::From;
 use std::path::PathBuf;
 use types::*;
+use errors::*;
 use std::thread;
 
 use std::io::{self, Read};

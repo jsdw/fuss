@@ -1,4 +1,5 @@
 use types::*;
+use errors::*;
 use std::io::{self, Write};
 
 /// the only thing we expose from this:
@@ -303,7 +304,7 @@ impl Items {
 
                 EvaluatedCSSEntry::Block(block) => {
 
-                    struct Pos{ start: Position, end: Position };
+                    struct Pos{ start: 0, end: 0 };
                     let pos = Pos{ start: block.start, end: block.end };
 
                     match block.ty {
@@ -364,24 +365,24 @@ impl Items {
 
 }
 
-fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorType> {
+fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
 
     let mut inner = vec![];
     for item in block.css {
         match item {
             EvaluatedCSSEntry::KeyVal{..} => {
-                return Err(ErrorType::KeyframesKeyvalsNotAllowedAtTop);
+                return Err(ShapeError::KeyframesKeyvalsNotAllowedAtTop.into());
             },
             EvaluatedCSSEntry::Block(block) => {
                 match block.ty {
                     BlockType::Keyframes => {
-                        return Err(ErrorType::KeyframesKeyframesBlockNotAllowed);
+                        return Err(ShapeError::KeyframesKeyframesBlockNotAllowed.into());
                     },
                     BlockType::FontFace => {
-                        return Err(ErrorType::KeyframesFontFaceBlockNotAllowed);
+                        return Err(ShapeError::KeyframesFontFaceBlockNotAllowed.into());
                     },
                     BlockType::Media => {
-                        return Err(ErrorType::KeyframesMediaBlockNotAllowed);
+                        return Err(ShapeError::KeyframesMediaBlockNotAllowed.into());
                     },
                     BlockType::Generic => {
                         let mut keyvals = vec![];
@@ -391,7 +392,7 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorType> {
                                     keyvals.push( (key,val) );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
-                                    return Err(ErrorType::KeyframesNestedBlockNotAllowed);
+                                    return Err(ShapeError::KeyframesNestedBlockNotAllowed.into());
                                 }
                             }
                         }
@@ -411,7 +412,7 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorType> {
     })
 
 }
-fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorType> {
+fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
 
     let mut keyvals = vec![];
     for item in block.css {
@@ -420,7 +421,7 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorType> {
                 keyvals.push( (key,val) );
             },
             EvaluatedCSSEntry::Block(_) => {
-                return Err(ErrorType::FontfaceBlockNotAllowed);
+                return Err(ShapeError::FontfaceBlockNotAllowed.into());
             }
         }
     }

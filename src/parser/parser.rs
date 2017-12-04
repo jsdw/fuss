@@ -1,4 +1,5 @@
 use types::*;
+use errors::*;
 use pest::*;
 use pest::iterators::*;
 use pest::inputs::*;
@@ -35,7 +36,7 @@ macro_rules! parser_rules {
     )
 }
 
-pub fn parse(input: &str) -> Result<Expression,ErrorType> {
+pub fn parse(input: &str) -> Result<Expression,ErrorKind> {
 
     match MyGrammar::parse_str(Rule::file, input) {
         Ok(mut pairs) => {
@@ -48,7 +49,7 @@ pub fn parse(input: &str) -> Result<Expression,ErrorType> {
             ))
         },
         Err(e) => {
-            Err(ErrorType::ParseError(format!("{}", e)))
+            Err(SyntaxError::ParseError(format!("{}", e)))
         }
     }
 
@@ -369,8 +370,8 @@ parser_rules!{
 fn to_expression(pair: MyPair, expr: Expr) -> Expression {
     let span = pair.into_span();
     Expression::with_position(
-        Position(span.start()),
-        Position(span.end()),
+        span.start(),
+        span.end(),
         expr
     )
 }
@@ -395,8 +396,8 @@ fn naked_variable_expression(pair: MyPair) -> Expression {
     let span = pair.clone().into_span();
     let tok = pair.as_str().to_owned();
     Expression::with_position(
-        Position(span.start()),
-        Position(span.end()),
+        span.start(),
+        span.end(),
         Expr::Var(tok, VarType::Builtin)
     )
 }
@@ -453,7 +454,7 @@ mod test {
     }
 
     fn e(e: Expr) -> Expression {
-        Expression::with_position(::types::Position::new(), ::types::Position::new(), e)
+        Expression::with_position(0, 0, e)
     }
 
     fn var(name: &str) -> Expression {

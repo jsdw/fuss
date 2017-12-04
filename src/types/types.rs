@@ -7,7 +7,6 @@ use std::rc::Rc;
 use types::colour;
 use types::errors;
 use types::scope::{Scope};
-use types::position::{Position};
 
 /// Unevaluated blocks and their parts
 #[derive(PartialEq,Debug,Clone)]
@@ -33,8 +32,8 @@ pub enum CSSBit {
 #[derive(PartialEq,Debug,Clone)]
 pub struct EvaluatedBlock {
     pub ty: BlockType,
-    pub start: Position,
-    pub end: Position,
+    pub start: usize,
+    pub end: usize,
     pub scope: HashMap<String,EvaluatedExpression>,
     pub selector: String,
     pub css: Vec<EvaluatedCSSEntry>
@@ -58,6 +57,18 @@ pub enum BlockType {
 pub enum VarType {
     User,
     Builtin
+}
+
+/// When describing types, we can use these
+#[derive(PartialEq,Debug,Clone,Copy)]
+pub enum Kind {
+    Str,
+    Bool,
+    Unit,
+    Colour,
+    Block,
+    Func,
+    Undefined
 }
 
 /// Anything that's an Expression
@@ -103,6 +114,20 @@ pub enum EvaluatedExpr {
     Block(EvaluatedBlock)
 }
 
+impl EvaluatedExpr {
+    pub fn kind(&self) -> Kind {
+        match *self {
+            Str(..) => Kind::Str,
+            Bool(..) => Kind::Bool,
+            Unit(..) => Kind::Unit,
+            Colour(..) => Kind::Colour,
+            Undefined => Kind::Undefined,
+            PrimFunc(..) | Func(..) => Kind::Func,
+            Block(..) => Kind::Block
+        }
+    }
+}
+
 /// Describes how to dig into a thing to get something out.
 #[derive(PartialEq,Debug,Clone)]
 pub enum Accessor {
@@ -116,8 +141,8 @@ pub enum Accessor {
 pub struct ExpressionOuter<E>( Rc<ExpressionInner<E>> );
 #[derive(Debug,Clone)]
 pub struct ExpressionInner<E> {
-    pub start: Position,
-    pub end: Position,
+    pub start: usize,
+    pub end: usize,
     pub expr: E
 }
 
@@ -132,7 +157,7 @@ impl <E> Deref for ExpressionOuter<E> {
     }
 }
 impl <E> ExpressionOuter<E> {
-    pub fn with_position(start: Position, end: Position, expr: E) -> ExpressionOuter<E> {
+    pub fn with_position(start: usize, end: usize, expr: E) -> ExpressionOuter<E> {
         ExpressionOuter(Rc::new(ExpressionInner{
             start: start,
             end: end,
@@ -140,7 +165,7 @@ impl <E> ExpressionOuter<E> {
         }))
     }
     pub fn new(expr: E) -> ExpressionOuter<E> {
-        ExpressionOuter::with_position(Position::new(), Position::new(), expr)
+        ExpressionOuter::with_position(0, 0, expr)
     }
     pub fn into_expr(self) -> Option<E> {
         match Rc::try_unwrap(self.0) {

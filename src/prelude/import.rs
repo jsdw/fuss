@@ -1,4 +1,5 @@
 use types::*;
+use errors::*;
 use std::fs::File;
 use std::io::Read;
 use evaluator::eval;
@@ -10,10 +11,10 @@ use std::path::PathBuf;
 pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
 
     if args.len() > 1 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() });
     }
     if !context.path.is_file() || !context.root.is_file() {
-        return Err(ErrorType::CannotImportNoPathSet);
+        return Err(ImportError::CannotImportNoPathSet);
     }
 
     // expect a string input:
@@ -21,7 +22,7 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
     let relpath = if let EvaluatedExpr::Str(ref relpath) = a.expr {
         Ok(relpath)
     } else {
-        Err(ErrorType::WrongTypeOfArguments{ message: "import requires a path string".to_owned() })
+        Err(ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str], got: a.expr.kind() })
     }?;
 
     // is the path absolute? if so, search from wherever the root fuss file lives.
@@ -90,16 +91,11 @@ fn import_path_with_string(context: Context, contents: String) -> PrimRes {
             e.file = context.path.clone();
             e
         }),
-        Err(err) => Err(Error{
-            ty: err,
-            file: context.path.clone(),
-            start: Position::new(),
-            end: Position::new()
-        })
+        Err(e) => Err(err(e, Location::at(0,0).file(context.path.clone()))
     };
 
     // return either the Expr or an ImportError which wraps the import issue.
-    res.map_err(|e| ErrorType::ImportError(Box::new(e)))
+    res.map_err(|e| ImportError::Import(Box::new(e).into())
        .map(|e| {
            let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
            context.file_cache.set(context.path.clone(), expr.clone());

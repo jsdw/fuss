@@ -1,30 +1,32 @@
 use std::path::PathBuf;
 use std::convert::Into;
-use types::position::Position;
-use types::{EvaluatedExpr,VarType};
+use types::{EvaluatedExpr,VarType,Kind};
 
 // Usage:
 // import errors::*;
 // Error::new(ApplicationError::NotAFunction, Location::at(0,100))
 //
 // An error has a position and an underlying cause. Anything that
-// can be turned into a SomeError (including this) can be wrapped in
+// can be turned into a ErrorKind (including this) can be wrapped in
 // this struct, to build up a stack trace. It's intended that one
 // creates an errror by running errors::new given a Position and an
 // errors::Shape/Application etc, or a pre-existing Error.
 #[derive(Clone,PartialEq,Debug)]
 pub struct Error {
     location: Box<Location>,
-    cause: Box<SomeError>
+    cause: Box<ErrorKind>
 }
 
 impl Error {
-    pub fn new<E: Into<SomeError>>(err: E, pos: Location) -> Error {
-        Context{
+    pub fn new<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
+        Error {
             location: Box::new(pos),
             cause: Box::new(err.into())
         }
     }
+}
+pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
+    Error::new(err.into(),pos)
 }
 
 // Where an error happened.
@@ -59,7 +61,7 @@ impl Location {
 // or can be a context which itself contains an
 // error.
 #[derive(Clone,PartialEq,Debug)]
-enum SomeError {
+pub enum ErrorKind {
     ApplicationError(ApplicationError),
     ImportError(ImportError),
     ShapeError(ShapeError),
@@ -67,29 +69,29 @@ enum SomeError {
     Context(Error)
 }
 
-impl From<ApplicationError> for SomeError {
+impl From<ApplicationError> for ErrorKind {
     fn from(err: ApplicationError) -> Self {
-        SomeError::ApplicationError(err)
+        ErrorKind::ApplicationError(err)
     }
 }
-impl From<ImportError> for SomeError {
+impl From<ImportError> for ErrorKind {
     fn from(err: ImportError) -> Self {
-        SomeError::ImportError(err)
+        ErrorKind::ImportError(err)
     }
 }
-impl From<ShapeError> for SomeError {
+impl From<ShapeError> for ErrorKind {
     fn from(err: ShapeError) -> Self {
-        SomeError::ShapeError(err)
+        ErrorKind::ShapeError(err)
     }
 }
-impl From<SyntaxError> for SomeError {
+impl From<SyntaxError> for ErrorKind {
     fn from(err: SyntaxError) -> Self {
-        SomeError::SyntaxError(err)
+        ErrorKind::SyntaxError(err)
     }
 }
-impl From<Error> for SomeError {
+impl From<Error> for ErrorKind {
     fn from(err: Error) -> Self {
-        SomeError::Context(err)
+        ErrorKind::Context(err)
     }
 }
 
@@ -99,15 +101,15 @@ pub enum ApplicationError {
     CantFindVariable(String,VarType),
     NotAFunction,
     WrongNumberOfArguments{expected: usize, got: usize},
-    WrongTypeOfArguments{index: usize, expected: String, got: String},
+    WrongKindOfArguments{index: usize, expected: Vec<Kind>, got: Kind},
     PropertyDoesNotExist(String),
     UnitMismatch
 }
 
-// Errors importErroring things.
+// Errors importing things.
 #[derive(Clone,PartialEq,Debug)]
-pub enum Import {
-    CannotImportNoPathSet
+pub enum ImportError {
+    CannotImportNoPathSet,
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportLoop(Vec<PathBuf>, PathBuf),

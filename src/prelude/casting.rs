@@ -1,10 +1,11 @@
 use types::*;
+use errors::*;
 
 /// cast an expression to a boolean as best we can
 pub fn boolean(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into());
     }
 
     let raw = raw_boolean(&args[0].expr)?;
@@ -16,7 +17,7 @@ pub fn boolean(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 pub fn string(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() != 1 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 1, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into());
     }
 
     let raw = raw_string(&args[0].expr)?;
@@ -24,7 +25,7 @@ pub fn string(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
 }
 
-pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorType> {
+pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorKind> {
     match *e {
         EvaluatedExpr::Str(ref s) =>
             Ok(s.to_owned()),
@@ -35,11 +36,11 @@ pub fn raw_string(e: &EvaluatedExpr) -> Result<String,ErrorType> {
         EvaluatedExpr::Colour(ref col) => {
             Ok(format!["rgba({},{},{},{})", col.red_u8(), col.green_u8(), col.blue_u8(), col.alpha()])
         },
-        _ => Err(ErrorType::InvalidExpressionInCssValue(Box::new(e.to_owned())))
+        _ => Err(ShapeError::InvalidExpressionInCssValue(Box::new(e.to_owned())).into())
     }
 }
 
-pub fn raw_boolean(e: &EvaluatedExpr) -> Result<bool,ErrorType> {
+pub fn raw_boolean(e: &EvaluatedExpr) -> Result<bool,ErrorKind> {
     Ok(match *e {
         EvaluatedExpr::Str(ref s) => s.len() > 0,
         EvaluatedExpr::Bool(ref b) => *b,

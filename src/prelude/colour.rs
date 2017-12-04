@@ -1,13 +1,14 @@
 use types::*;
+use errors::*;
 
 // red, green, blue, alpha
 pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() < 3 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 3, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() });
     }
     if args.len() > 4 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 4, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() });
     }
 
     let get_number = |e: &'a EvaluatedExpression| {
@@ -53,10 +54,10 @@ pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
 pub fn hsla<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     if args.len() < 3 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 3, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 3, got: args.len() });
     }
     if args.len() > 4 {
-        return Err(ErrorType::WrongNumberOfArguments{ expected: 4, got: args.len() });
+        return Err(ApplicationError::WrongNumberOfArguments{ expected: 4, got: args.len() });
     }
 
     let get_number = |e: &'a EvaluatedExpression| {
