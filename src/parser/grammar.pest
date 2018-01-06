@@ -1,16 +1,6 @@
 // a file begins as if we are inside a block already, to reduce boilerplate:
 file = { n ~ block_inner ~ n ~ eoi }
 
-// expression = {
-//     { function | if_then_else | block | undefined | string | boolean | colour | unit | prefix_application | accessible }
-//     infix0 = { n~ infix0_op ~n }
-//     infix1 = { n~ infix1_op ~n }
-//     infix2 = { n~ infix2_op ~n }
-//     infix3 = { n~ infix3_op ~n }
-//     infix4 = { n~ infix4_op ~n }
-//     infix5 = {< n~ infix5_op ~n }
-// }
-
 // different types of expression, plus infix ops in reverse precedence order:
 expression = { expr ~ (infix ~ expr)* }
     expr = _{ function | if_then_else | block | undefined | string | boolean | colour | unit | prefix_application | accessible }
@@ -73,8 +63,8 @@ variable = ${ "$" ~ variable_name }
 naked_variable = { variable_name }
 if_then_else = { "if" ~n~ expression ~n~ "then" ~n~ expression ~n~ "else" ~n~ expression }
 
-function = { "(" ~n~ function_args? ~n~ ")" ~n~ "=>" ~n~ function_expression }
-    function_args = { variable ~n~ ( "," ~n~ variable )* }
+function = { "(" ~n~ function_args ~n~ ")" ~n~ "=>" ~n~ function_expression }
+    function_args = { ( variable ~n~ ( "," ~n~ variable )* )? }
     function_expression = _{ expression }
 
 variable_name = { ('a'..'z' | 'A'..'Z' | "_" | '0'..'9')+ }

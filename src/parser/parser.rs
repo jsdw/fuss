@@ -654,6 +654,11 @@ mod test {
     }
 
     process_test!{test_functions_e;
+        "() => true" =>
+            e(Expr::Func{
+                inputs: vec![],
+                output: b(true)
+            });
         "($apPl_3s, $b2ananA) => true" =>
             e(Expr::Func{
                 inputs: vec![s("apPl_3s"),s("b2ananA")],
