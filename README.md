@@ -68,7 +68,7 @@ $b: blue;
 .hello {
 	color: $b;
 }
-``` 
+```
 
 This has exactly the same output:
 
@@ -166,6 +166,23 @@ $block:{
 }
 ```
 
+A neat trick if you want to declare intermediate variables without exposing them outside of a function is to work inside a block and then return only what you want from it. Here, `$a` is 3:
+
+```
+$a: ({
+	// these internal variables are hidden outside this block:
+	$a: 1px;
+	$b: 2;
+	// we access $res from the block to return it. Parens are
+	// required around the block to make parsing simpler:
+	$res: $a + $b;
+}).res;
+
+.hello {
+	padding: $a;
+}
+```
+
 Passing and returning blocks is particularly useful within functions..
 
 ### Functions
@@ -193,7 +210,7 @@ $fn: ($b) => {
 }
 ```
 
-The above allows for an optional $border argument to be provided, defaulting to a 5px border radius if not.
+The above function both takes and returns a block. It allows for an optional $border argument to be provided, defaulting to a 5px border radius if not.
 
 ### Undefined
 

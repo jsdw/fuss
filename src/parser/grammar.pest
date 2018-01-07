@@ -57,7 +57,8 @@ block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
         block_css_value_chars = ${ ( !(block_interpolated_expression | variable | ";" | "}") ~ any )+ }
 
 // any expression can also exist in parentheses:
-paren_expression = { "(" ~n~ expression ~n~ ")" }
+// needs to be non atomic so that it works inside parens in the "accessible" rule.
+paren_expression = !{ "(" ~n~ expression ~n~ ")" }
 
 variable = ${ "$" ~ variable_name }
 naked_variable = { variable_name }
