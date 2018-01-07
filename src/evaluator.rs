@@ -283,7 +283,7 @@ fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) 
         let &(expr,ref expr_deps) = deps.get(key).expect("Trying to simplify an expression but can't find it on scope");
 
         if last.iter().any(|k| k == key) {
-            return Err(err(ImportError::CycleDetected(last.clone()), Location::at(expr.start,expr.end)));
+            return Err(err(ImportError::CycleDetected(last.clone(), key.clone()), Location::at(expr.start,expr.end)));
         }
 
         if expr_deps.len() > 0 {
@@ -354,7 +354,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    _ => return Err(err(ShapeError::NotACSSBlock, Location::at(css_expr.start,css_expr.end)))
+                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), Location::at(css_expr.start,css_expr.end)))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val} => {

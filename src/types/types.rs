@@ -70,6 +70,19 @@ pub enum Kind {
     Func,
     Undefined
 }
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            Kind::Str => "string",
+            Kind::Bool => "boolean",
+            Kind::Unit => "unit",
+            Kind::Colour => "colour",
+            Kind::Block => "block",
+            Kind::Func => "function",
+            Kind::Undefined => "undefined"
+        })
+    }
+}
 
 /// Anything that's an Expression
 #[derive(PartialEq,Debug,Clone)]

@@ -87,12 +87,12 @@ fn import_path_with_string(context: Context, contents: String) -> PrimRes {
 
     // let res = parse(&input);
     let res = match parse(&contents) {
-        Ok(expr) => eval(&expr, super::get_prelude(), &context),//.map_err(|mut e| e.file(context.path.clone())),
-        Err(e) => Err(err(e, Location::at(0,0).file(context.path.clone())))
+        Ok(expr) => eval(&expr, super::get_prelude(), &context),
+        Err(e) => Err(err(e, Location::at(0,0)))
     };
 
     // return either the Expr or an ImportError which wraps the import issue.
-    res.map_err(|e| ImportError::Import(Box::new(e)).into())
+    res.map_err(|e| ImportError::Import(Box::new(e), context.path.clone()).into())
        .map(|e| {
            let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
            context.file_cache.set(context.path.clone(), expr.clone());

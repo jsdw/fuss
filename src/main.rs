@@ -38,23 +38,28 @@ fn run() {
         /// and get matched commands:
         let yaml = load_yaml!("cli.yml");
         let matches = App::from_yaml(yaml).get_matches();
+        let maybe_path = matches.value_of("input").map(PathBuf::from);
 
         // import the FUSS file, compiling and evaluating it.
         // if path provided, use that, else pull from stdin.
-        let res = match matches.value_of("input") {
-            Some(input) => import_root( &PathBuf::from(input) ),
+        let res = match maybe_path {
+            Some(path) => {
+                import_root(&path)
+                    .map_err(|e| err(e, Location::at(0,0).file(path)))
+            },
             None => {
                 let mut buffer = String::new();
                 let stdin = io::stdin();
                 let mut handle = stdin.lock();
                 handle.read_to_string(&mut buffer);
-                import_string( buffer )
+                import_string(buffer)
+                    .map_err(|e| err(e, Location::at(0,0)))
             }
         };
 
         match res {
             Err(e) => {
-                eprintln!("Error: {:?}", e);
+                eprintln!("{}", display_error(e));
             },
             Ok(EvaluatedExpr::Block(block)) => {
                 outputter::print_css(block);
