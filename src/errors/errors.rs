@@ -3,6 +3,7 @@ use std::fmt;
 use std::iter;
 use std::convert::Into;
 use types::{EvaluatedExpr,VarType,Kind};
+use parser::parser::Rule;
 
 // Usage:
 // import errors::*;
@@ -43,7 +44,6 @@ pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
 pub struct Location {
     start: usize,
     end: usize,
-    file: PathBuf,
     function: String,
 }
 
@@ -53,13 +53,8 @@ impl Location {
         Location {
             start: start,
             end: end,
-            file: PathBuf::new(),
             function: String::new()
         }
-    }
-    pub fn file(mut self, f: PathBuf) -> Location {
-        self.file = f;
-        self
     }
     pub fn func(mut self, f: String) -> Location {
         self.function = f;
@@ -87,7 +82,7 @@ impl fmt::Display for ErrorKind {
             ImportError(ref e) => e.fmt(f),
             ShapeError(ref e) => e.fmt(f),
             SyntaxError(ref e) => e.fmt(f),
-            Context(ref e) => e.fmt(f),            
+            Context(ref e) => e.fmt(f),
         }
     }
 }
@@ -178,7 +173,7 @@ impl fmt::Display for ApplicationError {
             },
             WrongUnitOfArguments{index, ref expected, ref got} => {
                 let e = expected.join(", ");
-                write!(f, "Argument {} is a unit with type '{}', but the function expected one of {}", index+1, got, e)                
+                write!(f, "Argument {} is a unit with type '{}', but the function expected one of {}", index+1, got, e)
             },
             PropertyDoesNotExist(ref prop) => {
                 write!(f, "trying to access the property '{}', which does not exist", prop)
@@ -289,15 +284,19 @@ impl fmt::Display for ShapeError {
 // Errors parsing the syntax into an AST.
 #[derive(Clone,PartialEq,Debug)]
 pub enum SyntaxError {
-    ParseError(String)
+    BadRule{ positives: Vec<Rule>, negatives: Vec<Rule> },
+    Custom{ message: String }
 }
 impl fmt::Display for SyntaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use self::SyntaxError::*;
 
         match *self {
-            ParseError(ref s) => {
-                write!(f, "There was an issue parsing:\n{}", s)
+            BadRule{ ref positives, ref negatives } => {
+                write!(f, "Parse Error::\nUnexpected rule")
+            }
+            Custom{ ref message } => {
+                write!(f, "Parse Error:\n{}", message)
             }
         }
     }

@@ -84,20 +84,17 @@ fn import_path(mut context: Context) -> PrimRes {
 }
 
 fn import_path_with_string(context: Context, contents: String) -> PrimRes {
-
-    // let res = parse(&input);
-    let res = match parse(&contents) {
-        Ok(expr) => eval(&expr, super::get_prelude(), &context),
-        Err(e) => Err(err(e, Location::at(0,0)))
-    };
-
-    // return either the Expr or an ImportError which wraps the import issue.
-    res.map_err(|e| ImportError::Import(Box::new(e), context.path.clone()).into())
-       .map(|e| {
-           let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
-           context.file_cache.set(context.path.clone(), expr.clone());
-           expr
-       })
+    parse(&contents)
+        // eval parsed expr if aprsing is successful:
+        .and_then(|expr| eval(&expr, super::get_prelude(), &context))
+        // catch any parse/eval errors and wrap:
+        .map_err(|e| ImportError::Import(Box::new(e), context.path.clone()).into())
+        // cache and return the final evaluatedexpr:
+        .map(|e| {
+            let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
+            context.file_cache.set(context.path.clone(), expr.clone());
+            expr
+        })
 }
 
 /// use this to eval a string into fuss; useful for interactive stuff but

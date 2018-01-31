@@ -2,7 +2,7 @@ use types::*;
 use errors::*;
 use pest::*;
 use pest::iterators::*;
-use pest::inputs::*;
+//use pest::inputs::*;
 use pest::prec_climber::{PrecClimber, Operator, Assoc};
 use std::collections::{HashMap};
 
@@ -13,7 +13,7 @@ const _GRAMMAR: &'static str = include_str!("grammar.pest");
 #[grammar = "./parser/grammar.pest"]
 struct MyGrammar;
 
-type MyPair<'a> = Pair<Rule,StrInput<'a>>;
+type MyPair<'a> = Pair<'a,Rule>;
 
 macro_rules! match_rules {
     ($pair:expr, $(let $var:ident = $rule:ident);+ $(;)* ) => {
@@ -36,9 +36,9 @@ macro_rules! parser_rules {
     )
 }
 
-pub fn parse(input: &str) -> Result<Expression,ErrorKind> {
+pub fn parse(input: &str) -> Result<Expression,::errors::Error> {
 
-    match MyGrammar::parse_str(Rule::file, input) {
+    match MyGrammar::parse(Rule::file, input) {
         Ok(mut pairs) => {
             match_rules!{pairs.next().unwrap(),
                 let block_pair = block_inner;
@@ -49,7 +49,24 @@ pub fn parse(input: &str) -> Result<Expression,ErrorKind> {
             ))
         },
         Err(e) => {
-            SyntaxError::ParseError(format!("{}", e)).into()
+            // extract the pest error and turn it into a shape more consistent with our own errors
+            // (basically, pull the location information out and keep the rest as-is):
+            use pest::Error::*;
+            match e {
+                ParsingError{positives, negatives, pos} => {
+                    let loc = pos.pos();
+                    Err(err(SyntaxError::BadRule{ positives, negatives }, Location::at(loc,loc)))
+                },
+                CustomErrorPos{message, pos} => {
+                    let loc = pos.pos();
+                    Err(err(SyntaxError::Custom{ message }, Location::at(loc,loc)))
+                },
+                CustomErrorSpan{message, span} => {
+                    let start = span.start();
+                    let end = span.end();
+                    Err(err(SyntaxError::Custom{ message }, Location::at(start,end)))
+                }
+            }
         }
     }
 
