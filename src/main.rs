@@ -45,7 +45,6 @@ fn run() {
         let res = match maybe_path {
             Some(path) => {
                 import_root(&path)
-                    .map_err(|e| err(e, Location::at(0,0)))
             },
             None => {
                 let mut buffer = String::new();
@@ -53,7 +52,6 @@ fn run() {
                 let mut handle = stdin.lock();
                 handle.read_to_string(&mut buffer);
                 import_string(buffer)
-                    .map_err(|e| err(e, Location::at(0,0)))
             }
         };
 

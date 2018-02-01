@@ -55,20 +55,20 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
     };
 
     // try to open the found file:
-    import_path(new_context)
+    import_path(new_context).map_err(|e| e.into())
 
 }
 
-fn import_path(mut context: Context) -> PrimRes {
+fn import_path(mut context: Context) -> Result<EvaluatedExpr, ImportError> {
 
     context.path.set_extension("fuss");
 
     if context.last.iter().any(|p| p == &context.path) {
-        return ImportError::ImportLoop(context.last.clone(), context.path.clone()).into()
+        return Err(ImportError::ImportLoop(context.last.clone(), context.path.clone()));
     }
 
     if let None = context.path.file_name() {
-        return ImportError::CannotOpenFile(context.path.clone()).into();
+        return Err(ImportError::CannotOpenFile(context.path.clone()));
     }
 
     if context.file_cache.exists(&context.path) {
@@ -83,7 +83,7 @@ fn import_path(mut context: Context) -> PrimRes {
 
 }
 
-fn import_path_with_string(context: Context, contents: String) -> PrimRes {
+fn import_path_with_string(context: Context, contents: String) -> Result<EvaluatedExpr, ImportError> {
     parse(&contents)
         // eval parsed expr if aprsing is successful:
         .and_then(|expr| eval(&expr, super::get_prelude(), &context))
@@ -99,7 +99,7 @@ fn import_path_with_string(context: Context, contents: String) -> PrimRes {
 
 /// use this to eval a string into fuss; useful for interactive stuff but
 /// can't import files if we didn't start with an actual filepath.
-pub fn import_string(file: String) -> PrimRes {
+pub fn import_string(file: String) -> Result<EvaluatedExpr, ImportError> {
 
     let context = Context{
         path: PathBuf::new(),
@@ -112,7 +112,7 @@ pub fn import_string(file: String) -> PrimRes {
 }
 
 /// our standard import mechanism, to get us going.
-pub fn import_root(path: &PathBuf) -> PrimRes {
+pub fn import_root(path: &PathBuf) -> Result<EvaluatedExpr, ImportError> {
 
     let context = Context{
         path: path.clone(),

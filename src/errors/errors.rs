@@ -21,7 +21,7 @@ pub struct Error {
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.cause.fmt(f)
+        write!(f, "{} at position ({}-{})", self.cause, self.location.start, self.location.end)
         // TODO: we need to make use of location information added
         // to errors.
     }
