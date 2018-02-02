@@ -283,7 +283,7 @@ fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) 
         let &(expr,ref expr_deps) = deps.get(key).expect("Trying to simplify an expression but can't find it on scope");
 
         if last.iter().any(|k| k == key) {
-            return Err(err(ImportError::CycleDetected(last.clone(), key.clone()), Location::at(expr.start,expr.end)));
+            return Err(err(ApplicationError::CycleDetected(last.clone(), key.clone()), Location::at(expr.start,expr.end)));
         }
 
         if expr_deps.len() > 0 {

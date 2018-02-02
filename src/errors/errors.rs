@@ -148,7 +148,8 @@ pub enum ApplicationError {
     WrongKindOfArguments{index: usize, expected: Vec<Kind>, got: Kind},
     WrongUnitOfArguments{index: usize, expected: Vec<String>, got: String},
     PropertyDoesNotExist(String),
-    UnitMismatch
+    UnitMismatch,
+    CycleDetected(Vec<String>, String)
 }
 impl fmt::Display for ApplicationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -180,6 +181,16 @@ impl fmt::Display for ApplicationError {
             },
             UnitMismatch => {
                 write!(f, "the suffixes of the units need to match but they do not")
+            },
+            CycleDetected(ref vars, ref var) => {
+                let cycle = vars
+                    .into_iter()
+                    .skip_while(|v| v != &var)
+                    .chain(iter::once(var))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" => ");
+                write!(f, "Variables were caught accessing eachother in a cycle:\n  {}", cycle)
             }
         }
     }
@@ -192,8 +203,7 @@ pub enum ImportError {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportLoop(Vec<PathBuf>, PathBuf),
-    Import(Box<Error>, PathBuf),
-    CycleDetected(Vec<String>, String)
+    Import(Box<Error>, PathBuf)
 }
 impl fmt::Display for ImportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -221,16 +231,6 @@ impl fmt::Display for ImportError {
             },
             Import(ref err, ref path) => {
                 write!(f, "Error while importing {}:\n  {}", path.display(), err)
-            },
-            CycleDetected(ref vars, ref var) => {
-                let cycle = vars
-                    .into_iter()
-                    .skip_while(|v| v != &var)
-                    .chain(iter::once(var))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(" => ");
-                write!(f, "Variables were caught accessing eachother in a cycle:\n  {}", cycle)
             }
         }
     }
