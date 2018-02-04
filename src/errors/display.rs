@@ -20,11 +20,11 @@ pub fn display_error(e: ImportError) {
         CompileError(boxed_err, path) => {
             if path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , display_compile_error(boxed_err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(*boxed_err, &ErrorContext::new(path.clone()))
                 )
             } else {
                 eprintln!("I ran into an error compiling the file:\n\n{}"
-                    , display_compile_error(boxed_err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(*boxed_err, &ErrorContext::new(path.clone()))
                 )
             }
         }
@@ -33,11 +33,23 @@ pub fn display_error(e: ImportError) {
 
 // context provides the current path of the file that the error happened in.
 // Each time we hit an import error, we recurse into it using the new path.
-fn display_compile_error(err: Box<Error>, context: &ErrorContext) -> String {
-    format!("{}\n{}"
-        , highlight_error(&err.location(), context).unwrap_or("Nope".to_owned())
-        , err
-    )
+fn display_compile_error(err: Error, context: &ErrorContext) -> String {
+    let mut out = if let ErrorKind::ImportError(ImportError::CompileError(ref inner_err, ref path)) = err {
+        let mut o = display_compile_error(*inner_err.clone(), &ErrorContext::new(path.clone()));
+        write!(&mut o, "\n\n");
+        o
+    } else {
+        String::new();
+    };
+
+    write!(&mut out, "{}\n\n{}\n{}"
+        , err.error_summary()
+        , highlight_error(&err.location(), context)
+            .unwrap_or_else(|| context.path.display().to_string())
+        , err.error_description()
+    );
+
+    out
 }
 
 // print the relevant part of the file with the error location highlighted:

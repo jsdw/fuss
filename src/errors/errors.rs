@@ -19,14 +19,14 @@ pub struct Error {
     location: Box<Location>,
     cause: Box<ErrorKind>
 }
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} at position ({}-{})", self.cause, self.location.start(), self.location.end())
-        // TODO: we need to make use of location information added
-        // to errors.
+impl ErrorText for Error {
+    fn error_summary(&self) -> String {
+        self.cause.error_summary()
+    }
+    fn error_description(&self) -> String {
+        self.cause.error_description()
     }
 }
-
 impl Error {
     pub fn new<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
         Error {
@@ -46,22 +46,15 @@ pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
 #[derive(Clone,PartialEq,Debug)]
 pub struct Location {
     start_loc: usize,
-    end_loc: usize,
-    function: String,
+    end_loc: usize
 }
-
 
 impl Location {
     pub fn at(start: usize, end: usize) -> Location {
         Location {
             start_loc: start,
-            end_loc: end,
-            function: String::new()
+            end_loc: end
         }
-    }
-    pub fn func(mut self, f: String) -> Location {
-        self.function = f;
-        self
     }
     pub fn start(&self) -> usize {
         self.start_loc
@@ -82,16 +75,26 @@ pub enum ErrorKind {
     SyntaxError(SyntaxError),
     Context(Error)
 }
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ErrorKind::*;
 
+impl ErrorText for ErrorKind {
+    fn error_summary(&self) -> String {
+        use self::ErrorKind::*;
         match *self {
-            ApplicationError(ref e) => e.fmt(f),
-            ImportError(ref e) => e.fmt(f),
-            ShapeError(ref e) => e.fmt(f),
-            SyntaxError(ref e) => e.fmt(f),
-            Context(ref e) => e.fmt(f),
+            ApplicationError(ref e) => e.error_summary(),
+            ImportError(ref e) => e.error_summary(),
+            ShapeError(ref e) => e.error_summary(),
+            SyntaxError(ref e) => e.error_summary(),
+            Context(ref e) => e.error_summary(),
+        }
+    }
+    fn error_description(&self) -> String {
+        use self::ErrorKind::*;
+        match *self {
+            ApplicationError(ref e) => e.error_description(),
+            ImportError(ref e) => e.error_description(),
+            ShapeError(ref e) => e.error_description(),
+            SyntaxError(ref e) => e.error_description(),
+            Context(ref e) => e.error_description(),
         }
     }
 }
@@ -160,36 +163,65 @@ pub enum ApplicationError {
     UnitMismatch,
     CycleDetected(Vec<String>, String)
 }
-impl fmt::Display for ApplicationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::ApplicationError::*;
 
+impl ErrorText for ApplicationError {
+    fn error_summary(&self) -> String {
+        use self::ApplicationError::*;
+        match *self {
+            CantFindVariable{..} => {
+                "I cannot find this variable".to_owned()
+            },
+            NotAFunction => {
+                "This is not a function".to_owned()
+            },
+            WrongNumberOfArguments{..} => {
+                "The wrong number of arguments are being used here".to_owned()
+            },
+            WrongKindOfArguments{..} => {
+                "One or more of the arguments here are the wrong kind".to_owned()
+            },
+            WrongUnitOfArguments{..} => {
+                "One or more of the arguments here have the wrong unit".to_owned()
+            },
+            PropertyDoesNotExist{..} => {
+                "This property does not exist".to_owned()
+            },
+            UnitMismatch => {
+                "Units do not match".to_owned()
+            },
+            CycleDetected(ref vars, ref var) => {
+                "A cycle has been detected".to_owned()
+            }
+        }
+    }
+    fn error_description(&self) -> String {
+        use self::ApplicationError::*;
         match *self {
             CantFindVariable(ref name, ty) => {
                 match ty {
-                    VarType::User => write!(f, "The variable '{}' has not been declared", name),
-                    VarType::Builtin => write!(f, "The built-in variable '{}' does not exist", name)
+                    VarType::User => format!("The variable '{}' has not been declared", name),
+                    VarType::Builtin => format!("The built-in variable '{}' does not exist", name)
                 }
             },
             NotAFunction => {
-                write!(f, "Trying to use something here as a function, but it is not")
+                format!("Trying to use something here as a function, but it is not")
             },
             WrongNumberOfArguments{expected,got} => {
-                write!(f, "This function expected {} arguments but got {}", expected, got)
+                format!("This function expected {} arguments but got {}", expected, got)
             },
             WrongKindOfArguments{index, ref expected, got} => {
                 let e = expected.into_iter().map(|k| k.to_string()).collect::<Vec<_>>().join(", ");
-                write!(f, "Argument {} is a {}, but the function expected one of {}", index+1, got, e)
+                format!("Argument {} is a {}, but the function expected one of {}", index+1, got, e)
             },
             WrongUnitOfArguments{index, ref expected, ref got} => {
                 let e = expected.join(", ");
-                write!(f, "Argument {} is a unit with type '{}', but the function expected one of {}", index+1, got, e)
+                format!("Argument {} is a unit with type '{}', but the function expected one of {}", index+1, got, e)
             },
             PropertyDoesNotExist(ref prop) => {
-                write!(f, "trying to access the property '{}', which does not exist", prop)
+                format!("trying to access the property '{}', which does not exist", prop)
             },
             UnitMismatch => {
-                write!(f, "the suffixes of the units need to match but they do not")
+                format!("the suffixes of the units need to match but they do not")
             },
             CycleDetected(ref vars, ref var) => {
                 let cycle = vars
@@ -199,7 +231,7 @@ impl fmt::Display for ApplicationError {
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(" => ");
-                write!(f, "Variables were caught accessing eachother in a cycle:\n  {}", cycle)
+                format!("Variables were caught accessing eachother in a cycle:\n  {}", cycle)
             }
         }
     }
@@ -214,19 +246,38 @@ pub enum ImportError {
     ImportLoop(Vec<PathBuf>, PathBuf),
     CompileError(Box<Error>, PathBuf)
 }
-impl fmt::Display for ImportError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl ErrorText for ImportError {
+    fn error_summary(&self) -> String {
         use self::ImportError::*;
-
         match *self {
             CannotImportNoPathSet => {
-                write!(f, "I am working from standard in, and so 'import' cannot be used as I don't know where to look for things")
+                "I cannot import things".to_owned()
             },
-            CannotOpenFile(ref path) => {
-                write!(f, "Trying to import the file at {}, but it cannot be opened (perhaps the name is misspelt?)", path.display())
+            CannotOpenFile{..} => {
+                "I cannot open this file".to_owned()
             },
-            CannotReadFile(ref path) => {
-                write!(f, "Cannot read the file at {} (perhaps you do not have permission?)", path.display())
+            CannotReadFile{..} => {
+                "I cannot read this file".to_owned()
+            },
+            ImportLoop{..} => {
+                "An import loop has been detected".to_owned()
+            },
+            CompileError{..} => {
+                "Imported from".to_owned()
+            }
+        }
+    }
+    fn error_description(&self) -> String {
+        use self::ImportError::*;
+        match *self {
+            CannotImportNoPathSet => {
+                "I am working from standard in, and so 'import' cannot be used as I don't know where to look for things".to_owned()
+            },
+            CannotOpenFile{..} => {
+                "Perhaps the path has been misspelt, or you do not have permission to access it?".to_owned()
+            },
+            CannotReadFile{..} => {
+                "The file exists, but you may not have permission to read it".to_owned()
             },
             ImportLoop(ref paths, ref path) => {
                 let cycle = paths
@@ -236,10 +287,10 @@ impl fmt::Display for ImportError {
                     .map(|p| p.display().to_string())
                     .collect::<Vec<_>>()
                     .join("\n  ");
-                write!(f, "An import loop was detected:\n  {}", cycle)
+                format!("{}", cycle)
             },
-            CompileError(ref err, ref path) => {
-                write!(f, "Error while importing {}:\n  {}", path.display(), err)
+            CompileError{..} => {
+                String::new()
             }
         }
     }
@@ -257,34 +308,54 @@ pub enum ShapeError {
     InvalidExpressionInCssValue(Box<EvaluatedExpr>),
     NotACSSBlock(Kind)
 }
-impl fmt::Display for ShapeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl ErrorText for ShapeError {
+    fn error_summary(&self) -> String {
         use self::ShapeError::*;
-
         match *self {
-            KeyframesKeyvalsNotAllowedAtTop => {
-                write!(f, "key:value pairs aren't allowed directly inside a @keyframes block")
-            },
-            KeyframesKeyframesBlockNotAllowed => {
-                write!(f, "@keyframes blocks aren't allowed inside other @keyframes blocks")
-            },
-            KeyframesFontFaceBlockNotAllowed => {
-                write!(f, "@font-face blocks aren't allowed inside @keyframes blocks")
-            },
-            KeyframesMediaBlockNotAllowed => {
-                write!(f, "@media blocks aren't allowed inside @keyframes blocks")
-            },
+            KeyframesKeyvalsNotAllowedAtTop   |
+            KeyframesKeyframesBlockNotAllowed |
+            KeyframesFontFaceBlockNotAllowed  |
+            KeyframesMediaBlockNotAllowed     |
             KeyframesNestedBlockNotAllowed => {
-                write!(f, "nested blocks aren't allowed inside @keyframes block sections")
+                "There is a problem in this @keyframes block".to_owned()
             },
             FontfaceBlockNotAllowed => {
-                write!(f, "nested blocks aren't allowed inside @font-face blocks")
+                "There is a problem in this @font-face block".to_owned()
             },
-            InvalidExpressionInCssValue(ref expr) => {
-                write!(f, "I can't handle an expression of type {} inside a CSS value", expr.kind())
+            InvalidExpressionInCssValue{..} => {
+                "Invalid value being inserted into this CSS".to_owned()
             },
             NotACSSBlock(kind) => {
-                write!(f, "I expected a CSS block but got a {}", kind)
+                "This should be a CSS block".to_owned()
+            }
+        }
+    }
+    fn error_description(&self) -> String {
+        use self::ShapeError::*;
+        match *self {
+            KeyframesKeyvalsNotAllowedAtTop => {
+                format!("key:value pairs aren't allowed directly inside a @keyframes block")
+            },
+            KeyframesKeyframesBlockNotAllowed => {
+                format!("@keyframes blocks aren't allowed inside other @keyframes blocks")
+            },
+            KeyframesFontFaceBlockNotAllowed => {
+                format!("@font-face blocks aren't allowed inside @keyframes blocks")
+            },
+            KeyframesMediaBlockNotAllowed => {
+                format!("@media blocks aren't allowed inside @keyframes blocks")
+            },
+            KeyframesNestedBlockNotAllowed => {
+                format!("nested blocks aren't allowed inside @keyframes block sections")
+            },
+            FontfaceBlockNotAllowed => {
+                format!("nested blocks aren't allowed inside @font-face blocks")
+            },
+            InvalidExpressionInCssValue(ref expr) => {
+                format!("I can't handle an expression of type {} inside a CSS value", expr.kind())
+            },
+            NotACSSBlock(kind) => {
+                format!("I expected a CSS block but got a {}", kind)
             }
         }
     }
@@ -296,17 +367,25 @@ pub enum SyntaxError {
     BadRule{ positives: Vec<Rule>, negatives: Vec<Rule> },
     Custom{ message: String }
 }
-impl fmt::Display for SyntaxError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl ErrorText for SyntaxError {
+    fn error_summary(&self) -> String {
+        "There was an error parsing this".to_owned()
+    }
+    fn error_description(&self) -> String {
         use self::SyntaxError::*;
-
         match *self {
             BadRule{ ref positives, ref negatives } => {
-                write!(f, "Parse Error::\nUnexpected rule")
+                format!("Unexpected rule")
             }
             Custom{ ref message } => {
-                write!(f, "Parse Error:\n{}", message)
+                format!("{}", message)
             }
         }
     }
+}
+
+// A trait allowing errors to carry a summary and description:
+pub trait ErrorText {
+    fn error_summary(&self) -> String;
+    fn error_description(&self) -> String;
 }
