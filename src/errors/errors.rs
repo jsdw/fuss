@@ -21,7 +21,7 @@ pub struct Error {
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} at position ({}-{})", self.cause, self.location.start, self.location.end)
+        write!(f, "{} at position ({}-{})", self.cause, self.location.start(), self.location.end())
         // TODO: we need to make use of location information added
         // to errors.
     }
@@ -34,6 +34,9 @@ impl Error {
             cause: Box::new(err.into())
         }
     }
+    pub fn location(&self) -> Location {
+        (*self.location).clone()
+    }
 }
 pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
     Error::new(err.into(),pos)
@@ -42,8 +45,8 @@ pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
 // Where an error happened.
 #[derive(Clone,PartialEq,Debug)]
 pub struct Location {
-    start: usize,
-    end: usize,
+    start_loc: usize,
+    end_loc: usize,
     function: String,
 }
 
@@ -51,14 +54,20 @@ pub struct Location {
 impl Location {
     pub fn at(start: usize, end: usize) -> Location {
         Location {
-            start: start,
-            end: end,
+            start_loc: start,
+            end_loc: end,
             function: String::new()
         }
     }
     pub fn func(mut self, f: String) -> Location {
         self.function = f;
         self
+    }
+    pub fn start(&self) -> usize {
+        self.start_loc
+    }
+    pub fn end(&self) -> usize {
+        self.end_loc
     }
 }
 
@@ -203,7 +212,7 @@ pub enum ImportError {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportLoop(Vec<PathBuf>, PathBuf),
-    Import(Box<Error>, PathBuf)
+    CompileError(Box<Error>, PathBuf)
 }
 impl fmt::Display for ImportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -229,7 +238,7 @@ impl fmt::Display for ImportError {
                     .join("\n  ");
                 write!(f, "An import loop was detected:\n  {}", cycle)
             },
-            Import(ref err, ref path) => {
+            CompileError(ref err, ref path) => {
                 write!(f, "Error while importing {}:\n  {}", path.display(), err)
             }
         }

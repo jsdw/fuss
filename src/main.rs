@@ -57,13 +57,13 @@ fn run() {
 
         match res {
             Err(e) => {
-                eprintln!("{}", display_error(e));
+                display_error(e);
             },
             Ok(EvaluatedExpr::Block(block)) => {
                 outputter::print_css(block);
             },
-            Ok(_) => {
-                eprintln!("Fuss file needs to evaluate to a css block");
+            Ok(e) => {
+                eprintln!("Fuss file needs to evaluate to a css block, but instead evaluates to: {}", e.kind());
             }
         }
 
