@@ -37,6 +37,9 @@ impl Error {
     pub fn location(&self) -> Location {
         (*self.location).clone()
     }
+    pub fn cause(&self) -> ErrorKind {
+        (*self.cause).clone()
+    }
 }
 pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
     Error::new(err.into(),pos)
@@ -263,7 +266,7 @@ impl ErrorText for ImportError {
                 "An import loop has been detected".to_owned()
             },
             CompileError{..} => {
-                "Imported from".to_owned()
+                "This file was imported from".to_owned()
             }
         }
     }
