@@ -71,23 +71,31 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
     writeln!(&mut out, "{}--> {} ({}:{}-{}:{})"
         , line_num_spaces
         , context.path.display()
+        // display 1 indexed values for humans:
         , start_line+1, start_offset+1, end_line+1, end_offset+1 );
+
     writeln!(&mut out, "{} |", line_num_spaces);
     for line in (start_line..end_line+1) {
         let line_human = line+1;
         let num_str = padded_num(line_human, max_line_num_length);
         let line_str = by_lines.get(line).unwrap_or(&"");
+
         writeln!(&mut out, "{} | {}", num_str, line_str).ok()?;
+
         if line == start_line {
+            // cater for start and end offset being on same line, and for start offset
+            // being at the end of the line (past it):
             let n = if line_str.len() <= start_offset { 1 }
                     else if start_line == end_line { (end_offset - start_offset).max(1) }
                     else { line_str.len() - start_offset };
+
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}{}", line_num_spaces, spaces(start_offset), arrows);
         } else if line > start_line && line < end_line {
             let arrows: String = iter::repeat('^').take(line_str.len()).collect();
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows);
         } else if line == end_line {
+            // cater for position being off the end of the line.
             let n = if line_str.len() <= end_offset { 1 } else { line_str.len() - end_offset };
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows);
