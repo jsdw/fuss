@@ -146,7 +146,7 @@ impl EvaluatedExpr {
 #[derive(PartialEq,Debug,Clone)]
 pub enum Accessor {
     Property{ name: String },
-    Function{ args: Vec<Expression> }
+    Function{ args: Vec<Expression>, location: Location }
 }
 
 /// An Expr paired with the start and end position

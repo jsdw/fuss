@@ -17,14 +17,14 @@ pub fn display_error(e: ImportError) {
         CannotReadFile(path) => {
             eprintln!("I can't read the file:\n\n{}\n\nPerhaps you do not have permission?", path.display())
         },
-        CompileError(boxed_err, path) => {
+        CompileError(err, path) => {
             if path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , display_compile_error(*boxed_err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(&err, &ErrorContext::new(path.clone()))
                 )
             } else {
                 eprintln!("I ran into an error compiling the file:\n\n{}"
-                    , display_compile_error(*boxed_err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(&err, &ErrorContext::new(path.clone()))
                 )
             }
         }
@@ -33,21 +33,35 @@ pub fn display_error(e: ImportError) {
 
 // context provides the current path of the file that the error happened in.
 // Each time we hit an import error, we recurse into it using the new path.
-fn display_compile_error(err: Error, context: &ErrorContext) -> String {
-    let mut out = if let ErrorKind::ImportError(ImportError::CompileError(ref inner_err, ref path)) = err.cause() {
-        let mut o = display_compile_error(*inner_err.clone(), &ErrorContext::new(path.clone()));
-        write!(&mut o, "\n\n");
-        o
-    } else {
-        String::new()
+fn display_compile_error(err: &Error, context: &ErrorContext) -> String {
+
+    let mut out = match err.cause() {
+        ErrorKind::ImportError(ImportError::CompileError(ref err, ref path)) => {
+            let mut o = display_compile_error(err, &ErrorContext::new(path.clone()));
+            o.push_str("\n");
+            o
+        },
+        ErrorKind::ApplicationError(ApplicationError::FunctionError(ref err)) => {
+            let mut o = display_compile_error(err, context);
+            o.push_str("\n");
+            o
+        },
+        _ => {
+            String::new()
+        }
     };
 
-    write!(&mut out, "{}:\n\n{}\n{}"
-        , err.error_summary()
-        , highlight_error(&err.location(), context)
-            .unwrap_or_else(|| context.path.display().to_string())
-        , err.error_description()
-    );
+    out.push_str(&err.error_summary());
+    out.push_str(":\n\n");
+    out.push_str(&highlight_error(&err.location(), context)
+        .unwrap_or_else(|| context.path.display().to_string()));
+    out.push('\n');
+
+    let desc = err.error_description();
+    if !desc.is_empty() {
+        out.push_str(&desc);
+        out.push('\n');
+    }
 
     out
 }
@@ -72,15 +86,15 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
         , line_num_spaces
         , context.path.display()
         // display 1 indexed values for humans:
-        , start_line+1, start_offset+1, end_line+1, end_offset+1 );
+        , start_line+1, start_offset+1, end_line+1, end_offset+1 ).unwrap();
 
-    writeln!(&mut out, "{} |", line_num_spaces);
+    writeln!(&mut out, "{} |", line_num_spaces).unwrap();
     for line in (start_line..end_line+1) {
         let line_human = line+1;
         let num_str = padded_num(line_human, max_line_num_length);
         let line_str = by_lines.get(line).unwrap_or(&"");
 
-        writeln!(&mut out, "{} | {}", num_str, line_str).ok()?;
+        writeln!(&mut out, "{} | {}", num_str, line_str).unwrap();
 
         if line == start_line {
             // cater for start and end offset being on same line, and for start offset
@@ -90,18 +104,18 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
                     else { line_str.len() - start_offset };
 
             let arrows: String = iter::repeat('^').take(n).collect();
-            writeln!(&mut out, "{} | {}{}", line_num_spaces, spaces(start_offset), arrows);
+            writeln!(&mut out, "{} | {}{}", line_num_spaces, spaces(start_offset), arrows).unwrap();
         } else if line > start_line && line < end_line {
             let arrows: String = iter::repeat('^').take(line_str.len()).collect();
-            writeln!(&mut out, "{} | {}", line_num_spaces, arrows);
+            writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         } else if line == end_line {
             // cater for position being off the end of the line.
             let n = if line_str.len() <= end_offset { 1 } else { line_str.len() - end_offset };
             let arrows: String = iter::repeat('^').take(n).collect();
-            writeln!(&mut out, "{} | {}", line_num_spaces, arrows);
+            writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         }
     }
-    writeln!(&mut out, "{} |", line_num_spaces);
+    writeln!(&mut out, "{} |", line_num_spaces).unwrap();
 
     Some(out)
 }

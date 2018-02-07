@@ -88,7 +88,7 @@ fn import_path_with_string(context: Context, contents: String) -> Result<Evaluat
         // eval parsed expr if aprsing is successful:
         .and_then(|expr| eval(&expr, super::get_prelude(), &context))
         // catch any parse/eval errors and wrap:
-        .map_err(|e| ImportError::CompileError(Box::new(e), context.path.clone()).into())
+        .map_err(|e| ImportError::CompileError(e, context.path.clone()).into())
         // cache and return the final evaluatedexpr:
         .map(|e| {
             let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");

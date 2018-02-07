@@ -164,7 +164,12 @@ parser_rules!{
                 right.end,
                 Expr::Accessed{
                     expression: naked_variable_expression(op),
-                    access: vec![ Accessor::Function{args:vec![left,right]} ]
+                    access: vec![
+                        Accessor::Function{
+                            location: Location::at(left.start, right.end),
+                            args:vec![left,right]
+                        }
+                    ]
                 }
             )
         };
@@ -214,13 +219,19 @@ parser_rules!{
     }
 
     fn prefix_application(pair: MyPair) -> Expr {
+        let span = pair.clone().into_span();
         match_rules!{pair,
             let sign = prefix_application_fn;
             let arg = prefix_application_arg;
         }
         Expr::Accessed{
             expression: naked_variable_expression(sign),
-            access: vec![ Accessor::Function{args:vec![primary_expression(inner_pair(arg))]} ]
+            access: vec![
+                Accessor::Function{
+                    args: vec![primary_expression(inner_pair(arg))],
+                    location: Location::at(span.start(), span.end())
+                }
+            ]
         }
     }
 
@@ -245,8 +256,10 @@ parser_rules!{
                     });
                 },
                 Rule::function_access => {
+                    let span = accessor.clone().into_span();
                     accessors.push(Accessor::Function{
-                        args: function_access(accessor)
+                        args: function_access(accessor),
+                        location: Location::at(span.start(), span.end())
                     });
                 },
                 _ => {

@@ -75,8 +75,7 @@ pub enum ErrorKind {
     ApplicationError(ApplicationError),
     ImportError(ImportError),
     ShapeError(ShapeError),
-    SyntaxError(SyntaxError),
-    Context(Error)
+    SyntaxError(SyntaxError)
 }
 
 impl ErrorText for ErrorKind {
@@ -86,8 +85,7 @@ impl ErrorText for ErrorKind {
             ApplicationError(ref e) => e.error_summary(),
             ImportError(ref e) => e.error_summary(),
             ShapeError(ref e) => e.error_summary(),
-            SyntaxError(ref e) => e.error_summary(),
-            Context(ref e) => e.error_summary(),
+            SyntaxError(ref e) => e.error_summary()
         }
     }
     fn error_description(&self) -> String {
@@ -96,8 +94,7 @@ impl ErrorText for ErrorKind {
             ApplicationError(ref e) => e.error_description(),
             ImportError(ref e) => e.error_description(),
             ShapeError(ref e) => e.error_description(),
-            SyntaxError(ref e) => e.error_description(),
-            Context(ref e) => e.error_description(),
+            SyntaxError(ref e) => e.error_description()
         }
     }
 }
@@ -148,11 +145,6 @@ impl From<SyntaxError> for ErrorKind {
         ErrorKind::SyntaxError(err)
     }
 }
-impl From<Error> for ErrorKind {
-    fn from(err: Error) -> Self {
-        ErrorKind::Context(err)
-    }
-}
 
 // Errors applying functions.
 #[derive(Clone,PartialEq,Debug)]
@@ -164,7 +156,8 @@ pub enum ApplicationError {
     WrongUnitOfArguments{index: usize, expected: Vec<String>, got: String},
     PropertyDoesNotExist(String),
     UnitMismatch,
-    CycleDetected(Vec<String>, String)
+    CycleDetected(Vec<String>, String),
+    FunctionError(Error)
 }
 
 impl ErrorText for ApplicationError {
@@ -194,6 +187,9 @@ impl ErrorText for ApplicationError {
             },
             CycleDetected(ref vars, ref var) => {
                 "A cycle has been detected".to_owned()
+            },
+            FunctionError{..} => {
+                "This function was called from".to_owned()
             }
         }
     }
@@ -235,6 +231,9 @@ impl ErrorText for ApplicationError {
                     .collect::<Vec<_>>()
                     .join(" => ");
                 format!("Variables were caught accessing eachother in a cycle:\n  {}", cycle)
+            },
+            FunctionError{..} => {
+                String::new()
             }
         }
     }
@@ -247,7 +246,7 @@ pub enum ImportError {
     CannotOpenFile(PathBuf),
     CannotReadFile(PathBuf),
     ImportLoop(Vec<PathBuf>, PathBuf),
-    CompileError(Box<Error>, PathBuf)
+    CompileError(Error, PathBuf)
 }
 impl ErrorText for ImportError {
     fn error_summary(&self) -> String {

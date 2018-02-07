@@ -93,7 +93,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                         };
 
                     },
-                    Accessor::Function{ ref args } => {
+                    Accessor::Function{ ref args, ref location } => {
 
                         let mut simplified_args = Vec::with_capacity(args.len());
                         for arg in args.into_iter() {
@@ -124,7 +124,9 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                 }
 
                                 // update our current expr to be the evaluated result:
-                                curr = eval(func_e, scope.push(function_scope), context)?;
+                                curr = eval(func_e, scope.push(function_scope), context).map_err(|e| {
+                                    err(ApplicationError::FunctionError(e), location.clone())
+                                })?;
 
                             },
                             EvaluatedExpr::PrimFunc(ref func) => {
@@ -219,7 +221,7 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
             },
             Expr::Accessed{ ref expression, ref access } => {
                 for accessor in access {
-                    if let Accessor::Function{ref args} = *accessor {
+                    if let Accessor::Function{ref args, ..} = *accessor {
                         for arg in args {
                             get_dependencies_of(arg, search, out);
                         }
