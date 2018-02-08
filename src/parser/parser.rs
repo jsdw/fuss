@@ -36,7 +36,7 @@ macro_rules! parser_rules {
     )
 }
 
-pub fn parse(input: &str) -> Result<Expression,::errors::Error> {
+pub fn parse(input: &str, context: &Context) -> Result<Expression,::errors::Error> {
 
     match MyGrammar::parse(Rule::file, input) {
         Ok(mut pairs) => {
@@ -55,16 +55,16 @@ pub fn parse(input: &str) -> Result<Expression,::errors::Error> {
             match e {
                 ParsingError{positives, negatives, pos} => {
                     let loc = pos.pos();
-                    Err(err(SyntaxError::BadRule{ positives, negatives }, Location::at(loc,loc)))
+                    Err(err(SyntaxError::BadRule{ positives, negatives }, At::position(&context.path,loc,loc)))
                 },
                 CustomErrorPos{message, pos} => {
                     let loc = pos.pos();
-                    Err(err(SyntaxError::Custom{ message }, Location::at(loc,loc)))
+                    Err(err(SyntaxError::Custom{ message }, At::position(&context.path,loc,loc)))
                 },
                 CustomErrorSpan{message, span} => {
                     let start = span.start();
                     let end = span.end();
-                    Err(err(SyntaxError::Custom{ message }, Location::at(start,end)))
+                    Err(err(SyntaxError::Custom{ message }, At::position(&context.path,start,end)))
                 }
             }
         }
@@ -248,11 +248,13 @@ parser_rules!{
         for accessor in pair.into_inner() {
             match accessor.as_rule() {
                 Rule::property_access => {
+                    let span = accessor.clone().into_span();
                     match_rules!{accessor,
                         let name = variable_name;
                     }
                     accessors.push(Accessor::Property{
-                        name: name.as_str().to_owned()
+                        name: name.as_str().to_owned(),
+                        location: Location::at(span.start()+1, span.end())
                     });
                 },
                 Rule::function_access => {

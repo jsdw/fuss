@@ -7,35 +7,35 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
     match e.expr {
 
-        /// String eg "hello"
-        Expr::Str(ref s) => Ok(expression_from!{e, EvaluatedExpr::Str(s.clone())}),
+        // String eg "hello"
+        Expr::Str(ref s) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Str(s.clone()))),
 
-        /// boolean eg true or false
-        Expr::Bool(b) => Ok(expression_from!{e, EvaluatedExpr::Bool(b)}),
+        // boolean eg true or false
+        Expr::Bool(b) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Bool(b))),
 
-        /// unit eg 12px, 100%, 30
-        Expr::Unit(n, ref unit) => Ok(expression_from!{e, EvaluatedExpr::Unit(n,unit.clone())}),
+        // unit eg 12px, 100%, 30
+        Expr::Unit(n, ref unit) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Unit(n,unit.clone()))),
 
-        /// colour
-        Expr::Colour(ref col) => Ok(expression_from!{e, EvaluatedExpr::Colour(col.clone())}),
+        // colour
+        Expr::Colour(ref col) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Colour(col.clone()))),
 
-        /// undefined
-        Expr::Undefined => Ok(expression_from!{e, EvaluatedExpr::Undefined}),
+        // undefined
+        Expr::Undefined => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Undefined)),
 
-        /// Variables: replace these with the Expresssion on scope that the
-        /// variable points to. Assume anything on scope is already simplified
-        /// as much as needed (this is important for Funcs, which use a scope
-        /// of vars to avoid replacing the func arg uses with other expressions)
+        // Variables: replace these with the Expresssion on scope that the
+        // variable points to. Assume anything on scope is already simplified
+        // as much as needed (this is important for Funcs, which use a scope
+        // of vars to avoid replacing the func arg uses with other expressions)
         Expr::Var(ref name, ty) => {
 
             scope.find(name, ty).map_or(
-                Err(err(ApplicationError::CantFindVariable(name.clone(), ty), Location::at(e.start,e.end))),
+                Err(err(ApplicationError::CantFindVariable(name.clone(), ty), At::position(&context.path, e.start,e.end))),
                 |var| { Ok(var.clone()) }
             )
 
         },
 
-        /// If simplifies based on the boolean-ness of the condition!
+        // If simplifies based on the boolean-ness of the condition!
         Expr::If{ ref cond, then: ref then_e, otherwise: ref else_e } => {
 
             let cond = eval(cond, scope.clone(), context)?;
@@ -43,7 +43,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             use prelude::casting::raw_boolean;
             let is_true = match raw_boolean(&cond.expr){
                 Ok(b) => Ok(b),
-                Err(e) => Err(err(e, Location::at(cond.start, cond.end)))
+                Err(e) => Err(err(e, At::position(&context.path, cond.start, cond.end)))
             }?;
 
             if is_true {
@@ -53,23 +53,26 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             }
         },
 
-        /// Func declarations: we want to store the scope that they are seen in
-        /// against the function so that it can be applied against the right things.
-        /// otherwise, leave as is.
+        // Func declarations: we want to store the scope that they are seen in
+        // against the function so that it can be applied against the right things.
+        // otherwise, leave as is.
         Expr::Func{ ref inputs, ref output } => {
 
-            Ok(expression_from!{e,
+            Ok(EvaluatedExpression::with_position(
+                e.start,
+                e.end,
+                context.path.clone(),
                 EvaluatedExpr::Func{
                     inputs: inputs.clone(),
                     output: output.clone(),
                     scope: scope.clone()
                 }
-            })
+            ))
 
         },
 
-        /// Access in the form of property access like $a.hello, or function application like $a(2,4)
-        /// access can be chained.
+        // Access in the form of property access like $a.hello, or function application like $a(2,4)
+        // access can be chained.
         Expr::Accessed{ ref expression, ref access } => {
 
             let mut curr: EvaluatedExpression = eval(expression, scope.clone(), context)?;
@@ -77,7 +80,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             for arg in access {
                 match *arg {
 
-                    Accessor::Property{ ref name } => {
+                    Accessor::Property{ ref name, ref location } => {
 
                         if let EvaluatedExpr::Block(ref block) = curr.clone().expr {
                             match block.scope.get(name) {
@@ -85,11 +88,11 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                     curr = val.clone();
                                 },
                                 None => {
-                                    curr = EvaluatedExpression::new(EvaluatedExpr::Undefined);
+                                    curr = EvaluatedExpression::with_position(location.start(), location.end(), context.path.clone(), EvaluatedExpr::Undefined);
                                 }
                             }
                         } else {
-                            return Err(err(ApplicationError::PropertyDoesNotExist(name.to_owned()), Location::at(e.start, e.end)));
+                            return Err(err(ApplicationError::PropertyDoesNotExist(name.to_owned()), At::position(&context.path, location.start(), location.end())));
                         };
 
                     },
@@ -106,7 +109,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // if too few args provided, set rest to undefined:
                                 while arg_names.len() > simplified_args.len() {
-                                    simplified_args.push( EvaluatedExpression::new(EvaluatedExpr::Undefined) );
+                                    simplified_args.push( EvaluatedExpression::with_position(location.start(), location.end(), context.path.clone(), EvaluatedExpr::Undefined) );
                                 }
 
                                 // complain if too many args are provided:
@@ -114,7 +117,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                     return Err(err(ApplicationError::WrongNumberOfArguments{
                                         expected: arg_names.len(),
                                         got: simplified_args.len()
-                                    }, Location::at(e.start, e.end)));
+                                    }, At::position(&context.path, e.start, e.end)));
                                 }
 
                                 // create scope containing simplified args to make use of in function body expr:
@@ -125,7 +128,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // update our current expr to be the evaluated result:
                                 curr = eval(func_e, scope.push(function_scope), context).map_err(|e| {
-                                    err(ApplicationError::FunctionError(e), location.clone())
+                                    err(ApplicationError::FunctionError(e), At::location(&context.path, location.clone()))
                                 })?;
 
                             },
@@ -133,13 +136,13 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // primitive func? just run it on the args then!
                                 curr = match func.0(&simplified_args, context) {
-                                    Ok(res) => Ok(expression_from!{e, res}),
-                                    Err(error) => Err(err(error, Location::at(e.start, e.end)))
+                                    Ok(res) => Ok(EvaluatedExpression::with_position(e.start,e.end,context.path.clone(),res)),
+                                    Err(error) => Err(err(error, At::position(&context.path, e.start, e.end)))
                                 }?;
 
                             }
                             _ => {
-                                return Err(err(ApplicationError::NotAFunction, Location::at(e.start, e.end)));
+                                return Err(err(ApplicationError::NotAFunction, At::position(&context.path, e.start, e.end)));
                             }
                         }
                     }
@@ -151,8 +154,8 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
         },
 
-        /// For Blocks, we do our best to simplify the block contents, complaining
-        /// if there is something invalid somewhere.
+        // For Blocks, we do our best to simplify the block contents, complaining
+        // if there is something invalid somewhere.
         Expr::Block(ref block) => {
 
             let block_scope = simplify_block_scope(&block.scope, &scope, context)?;
@@ -176,14 +179,18 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             else if selector.starts_with(keyframes_str) { ty = BlockType::Keyframes; selector = selector.replacen(keyframes_str,"",1); }
             else if selector.starts_with(fontface_str) { ty = BlockType::FontFace; selector = selector.replacen(fontface_str,"",1); }
 
-            Ok(expression_from![e, EvaluatedExpr::Block(EvaluatedBlock{
-                ty: ty,
-                start: e.start,
-                end: e.end,
-                scope: block_scope,
-                selector: selector,
-                css: css
-            })])
+            Ok(EvaluatedExpression::with_position(
+                e.start,
+                e.end,
+                context.path.clone(),
+                EvaluatedExpr::Block(EvaluatedBlock{
+                    ty: ty,
+                    at: At::position(&context.path, e.start, e.end),
+                    scope: block_scope,
+                    selector: selector,
+                    css: css
+                })
+            ))
 
         },
 
@@ -192,9 +199,9 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
 }
 
-/// Scan through an expression, searching for variables provided in `search`, and adding any found
-/// to `out`. Anything that introduces variables (function declaration and blocks) removes those from
-/// search (since they shadow the names we actually care about finding).
+// Scan through an expression, searching for variables provided in `search`, and adding any found
+// to `out`. Anything that introduces variables (function declaration and blocks) removes those from
+// search (since they shadow the names we actually care about finding).
 fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
 
     fn get_dependencies_of(e: &Expression, search: &HashSet<String>, out: &mut HashSet<String>) {
@@ -273,8 +280,8 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
 
 }
 
-/// Given a map of dependencies (var name -> Expression + var deps), return a map of evaluated expressions,
-/// or if a cycle is detected which prevents proper evaluation, an error.
+// Given a map of dependencies (var name -> Expression + var deps), return a map of evaluated expressions,
+// or if a cycle is detected which prevents proper evaluation, an error.
 type Dependencies<'a> = HashMap<String,(&'a Expression,HashSet<String>)>;
 fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) -> Result<HashMap<String,EvaluatedExpression>,Error> {
 
@@ -285,7 +292,7 @@ fn simplify_dependencies(deps: &Dependencies, scope: &Scope, context: &Context) 
         let &(expr,ref expr_deps) = deps.get(key).expect("Trying to simplify an expression but can't find it on scope");
 
         if last.iter().any(|k| k == key) {
-            return Err(err(ApplicationError::CycleDetected(last.clone(), key.clone()), Location::at(expr.start,expr.end)));
+            return Err(err(ApplicationError::CycleDetected(last.clone(), key.clone()), At::position(&context.path,expr.start,expr.end)));
         }
 
         if expr_deps.len() > 0 {
@@ -331,7 +338,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
                 use prelude::casting::raw_string;
                 let s = match raw_string(&e.expr) {
                     Ok(s) => Ok(s),
-                    Err(error) => Err(err(error, Location::at(e.start, e.end)))
+                    Err(error) => Err(err(error, At::position(&context.path, e.start, e.end)))
                 }?;
                 string.push(s);
             }
@@ -356,7 +363,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), Location::at(css_expr.start,css_expr.end)))
+                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), At::position(&context.path,css_expr.start,css_expr.end)))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val} => {

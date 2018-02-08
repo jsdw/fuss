@@ -34,8 +34,8 @@ fn run() {
 
     let child = thread::Builder::new().stack_size(64 * 1024 * 1024).spawn(move || {
 
-        /// parse args from CLI based on our cli.yml,
-        /// and get matched commands:
+        // parse args from CLI based on our cli.yml,
+        // and get matched commands:
         let yaml = load_yaml!("cli.yml");
         let matches = App::from_yaml(yaml).get_matches();
         let maybe_path = matches.value_of("input").map(PathBuf::from);

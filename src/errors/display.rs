@@ -20,11 +20,11 @@ pub fn display_error(e: ImportError) {
         CompileError(err, path) => {
             if path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , display_compile_error(&err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(&err)
                 )
             } else {
                 eprintln!("I ran into an error compiling the file:\n\n{}"
-                    , display_compile_error(&err, &ErrorContext::new(path.clone()))
+                    , display_compile_error(&err)
                 )
             }
         }
@@ -33,16 +33,16 @@ pub fn display_error(e: ImportError) {
 
 // context provides the current path of the file that the error happened in.
 // Each time we hit an import error, we recurse into it using the new path.
-fn display_compile_error(err: &Error, context: &ErrorContext) -> String {
+fn display_compile_error(err: &Error) -> String {
 
     let mut out = match err.cause() {
         ErrorKind::ImportError(ImportError::CompileError(ref err, ref path)) => {
-            let mut o = display_compile_error(err, &ErrorContext::new(path.clone()));
+            let mut o = display_compile_error(err);
             o.push_str("\n");
             o
         },
         ErrorKind::ApplicationError(ApplicationError::FunctionError(ref err)) => {
-            let mut o = display_compile_error(err, context);
+            let mut o = display_compile_error(err);
             o.push_str("\n");
             o
         },
@@ -53,8 +53,8 @@ fn display_compile_error(err: &Error, context: &ErrorContext) -> String {
 
     out.push_str(&err.error_summary());
     out.push_str(":\n\n");
-    out.push_str(&highlight_error(&err.location(), context)
-        .unwrap_or_else(|| context.path.display().to_string()));
+    out.push_str(&highlight_error(&err.at())
+        .unwrap_or_else(|| err.at().file().display().to_string()));
     out.push('\n');
 
     let desc = err.error_description();
@@ -67,13 +67,13 @@ fn display_compile_error(err: &Error, context: &ErrorContext) -> String {
 }
 
 // print the relevant part of the file with the error location highlighted:
-fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
+fn highlight_error(at: &At) -> Option<String> {
 
     let mut file = String::new();
-    File::open(&context.path).ok()?.read_to_string(&mut file).ok()?;
+    File::open(at.file()).ok()?.read_to_string(&mut file).ok()?;
     let by_lines: Vec<&str> = file.lines().collect();
 
-    let Offsets{start_line, start_offset, end_line, end_offset} = get_lines_from_location(loc, &file);
+    let Offsets{start_line, start_offset, end_line, end_offset} = get_lines_from_location(at, &file);
 
     let max_line_num_length = (start_line+1..end_line+2).fold(0, |max,n| {
         max.max(n.to_string().len())
@@ -84,12 +84,12 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
 
     writeln!(&mut out, "{}--> {} ({}:{}-{}:{})"
         , line_num_spaces
-        , context.path.display()
+        , at.file().display()
         // display 1 indexed values for humans:
         , start_line+1, start_offset+1, end_line+1, end_offset+1 ).unwrap();
 
     writeln!(&mut out, "{} |", line_num_spaces).unwrap();
-    for line in (start_line..end_line+1) {
+    for line in start_line..end_line+1 {
         let line_human = line+1;
         let num_str = padded_num(line_human, max_line_num_length);
         let line_str = by_lines.get(line).unwrap_or(&"");
@@ -99,9 +99,8 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
         if line == start_line {
             // cater for start and end offset being on same line, and for start offset
             // being at the end of the line (past it):
-            let n = if line_str.len() <= start_offset { 1 }
-                    else if start_line == end_line { (end_offset - start_offset).max(1) }
-                    else { line_str.len() - start_offset };
+            let n = if start_line == end_line { end_offset.checked_sub(start_offset).unwrap_or(0).max(1) }
+                    else { line_str.len().checked_sub(start_offset).unwrap_or(0).max(1) };
 
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}{}", line_num_spaces, spaces(start_offset), arrows).unwrap();
@@ -110,7 +109,7 @@ fn highlight_error(loc: &Location, context: &ErrorContext) -> Option<String> {
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         } else if line == end_line {
             // cater for position being off the end of the line.
-            let n = if line_str.len() <= end_offset { 1 } else { line_str.len() - end_offset };
+            let n = line_str.len().checked_sub(end_offset).unwrap_or(0).max(1);
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         }
@@ -138,10 +137,10 @@ fn padded_num(num: usize, len: usize) -> String {
 
 // given a start and end byte offset, we give back start and end line counts
 // and offsets.
-fn get_lines_from_location(loc: &Location, file: &str) -> Offsets {
+fn get_lines_from_location(at: &At, file: &str) -> Offsets {
 
-    let start = loc.start();
-    let end = loc.end();
+    let start = at.start();
+    let end = at.end();
 
     let mut start_line = 0;
     let mut start_offset = 0;

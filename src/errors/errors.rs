@@ -1,13 +1,12 @@
-use std::path::PathBuf;
-use std::fmt;
+use std::path::{PathBuf,Path};
 use std::iter;
 use std::convert::Into;
-use types::{EvaluatedExpr,VarType,Kind};
+use types::{EvaluatedExpr,VarType,Kind,Location};
 use parser::parser::Rule;
 
 // Usage:
 // import errors::*;
-// err(ApplicationError::NotAFunction, Location::at(0,100))
+// err(ApplicationError::NotAFunction, At::position(somefile, 0,100))
 //
 // An error has a position and an underlying cause. Anything that
 // can be turned into a ErrorKind (including this) can be wrapped in
@@ -16,7 +15,7 @@ use parser::parser::Rule;
 // errors::Shape/Application etc, or a pre-existing Error.
 #[derive(Clone,PartialEq,Debug)]
 pub struct Error {
-    location: Box<Location>,
+    at: Box<At>,
     cause: Box<ErrorKind>
 }
 impl ErrorText for Error {
@@ -28,42 +27,57 @@ impl ErrorText for Error {
     }
 }
 impl Error {
-    pub fn new<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
+    pub fn new<E: Into<ErrorKind>>(err: E, pos: At) -> Error {
         Error {
-            location: Box::new(pos),
+            at: Box::new(pos),
             cause: Box::new(err.into())
         }
     }
+    pub fn at(&self) -> &At {
+        &self.at
+    }
     pub fn location(&self) -> Location {
-        (*self.location).clone()
+        self.at.location.clone()
+    }
+    pub fn file(&self) -> &Path {
+        &self.at.file
     }
     pub fn cause(&self) -> ErrorKind {
         (*self.cause).clone()
     }
 }
-pub fn err<E: Into<ErrorKind>>(err: E, pos: Location) -> Error {
+pub fn err<E: Into<ErrorKind>>(err: E, pos: At) -> Error {
     Error::new(err.into(),pos)
 }
 
-// Where an error happened.
+// Where was the error at?
 #[derive(Clone,PartialEq,Debug)]
-pub struct Location {
-    start_loc: usize,
-    end_loc: usize
+pub struct At {
+    location: Location,
+    file: PathBuf
 }
 
-impl Location {
-    pub fn at(start: usize, end: usize) -> Location {
-        Location {
-            start_loc: start,
-            end_loc: end
+impl At {
+    pub fn position<File: AsRef<PathBuf>>(file: File, start: usize, end: usize) -> At {
+        At {
+            location: Location::at(start,end),
+            file: file.as_ref().clone(),
+        }
+    }
+    pub fn location<File: AsRef<PathBuf>>(file: File, loc: Location) -> At {
+        At {
+            location: loc,
+            file: file.as_ref().clone()
         }
     }
     pub fn start(&self) -> usize {
-        self.start_loc
+        self.location.start()
     }
     pub fn end(&self) -> usize {
-        self.end_loc
+        self.location.end()
+    }
+    pub fn file(&self) -> &Path {
+        &*self.file
     }
 }
 

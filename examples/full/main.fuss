@@ -28,7 +28,7 @@
     $mixin("-webkit")
 
     .more .bits {
-        color: red;
+        color: $other.var; // $other.fn(true);
         padding: $padding;
 
         .yet.more {

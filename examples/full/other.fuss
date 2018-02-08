@@ -2,5 +2,10 @@ $another: {
     opacity: 0;
 };
 
+$var: undefined;
+
+// $var: undefined;
+$fn: ($a) => $a + 2;
+
 $a: 2px;
 $b: 3px;

@@ -3,7 +3,7 @@ use errors::*;
 use std::collections::HashMap;
 
 /// merge variables declared in blocks, outputting a single block. Ignore Undefined variables.
-pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
+pub fn merge(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
 
     let mut ty = BlockType::Generic;
     let mut scope = HashMap::new();
@@ -48,8 +48,8 @@ pub fn merge(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
 
     Ok(EvaluatedExpr::Block(EvaluatedBlock{
         ty: ty,
-        start: 0,
-        end: 0,
+        //@todo improve this:
+        at: At::position(&context.path, 0, 0),
         scope: scope,
         selector: selector,
         css: css

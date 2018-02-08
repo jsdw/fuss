@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use cache::Cache;
-use std::path::PathBuf;
+use std::path::{PathBuf,Path};
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -32,8 +32,7 @@ pub enum CSSBit {
 #[derive(PartialEq,Debug,Clone)]
 pub struct EvaluatedBlock {
     pub ty: BlockType,
-    pub start: usize,
-    pub end: usize,
+    pub at: At,
     pub scope: HashMap<String,EvaluatedExpression>,
     pub selector: String,
     pub css: Vec<EvaluatedCSSEntry>
@@ -145,43 +144,38 @@ impl EvaluatedExpr {
 /// Describes how to dig into a thing to get something out.
 #[derive(PartialEq,Debug,Clone)]
 pub enum Accessor {
-    Property{ name: String },
+    Property{ name: String, location: Location },
     Function{ args: Vec<Expression>, location: Location }
 }
 
 /// An Expr paired with the start and end position
 /// of the underlying text:
 #[derive(Debug,Clone)]
-pub struct ExpressionOuter<E>( Rc<ExpressionInner<E>> );
+pub struct Expression( Rc<ExpressionInner> );
 #[derive(Debug,Clone)]
-pub struct ExpressionInner<E> {
+pub struct ExpressionInner{
     pub start: usize,
     pub end: usize,
-    pub expr: E
+    pub expr: Expr
 }
 
-/// Aliases for evaluated and unevaluated forms of expr container:
-pub type Expression = ExpressionOuter<Expr>;
-pub type EvaluatedExpression = ExpressionOuter<EvaluatedExpr>;
+impl Deref for Expression {
+    type Target = ExpressionInner;
+    fn deref(&self) -> &Self::Target { &*self.0 }
+}
 
-impl <E> Deref for ExpressionOuter<E> {
-    type Target = ExpressionInner<E>;
-    fn deref(&self) -> &Self::Target {
-        &*self.0
+// position independent equality
+impl PartialEq for Expression {
+    fn eq(&self, other:&Self) -> bool {
+        self.expr.eq(&other.expr)
     }
 }
-impl <E> ExpressionOuter<E> {
-    pub fn with_position(start: usize, end: usize, expr: E) -> ExpressionOuter<E> {
-        ExpressionOuter(Rc::new(ExpressionInner{
-            start: start,
-            end: end,
-            expr: expr
-        }))
+
+impl Expression {
+    pub fn with_position(start: usize, end: usize, expr: Expr) -> Expression{
+        Expression(Rc::new(ExpressionInner{ start, end, expr }))
     }
-    pub fn new(expr: E) -> ExpressionOuter<E> {
-        ExpressionOuter::with_position(0, 0, expr)
-    }
-    pub fn into_expr(self) -> Option<E> {
+    pub fn into_expr(self) -> Option<Expr> {
         match Rc::try_unwrap(self.0) {
             Ok(e) => Some(e.expr),
             Err(_) => None
@@ -189,11 +183,42 @@ impl <E> ExpressionOuter<E> {
     }
 }
 
-// this is so that we can compare expressions, ignoring
-// their positions.
-impl <E: PartialEq> PartialEq for ExpressionOuter<E> {
+// A version similar to the above but for evaluated expressions.
+// During evaluation, we append file info to each expression.
+// Otherwise, it's basically the same.
+#[derive(Debug,Clone)]
+pub struct EvaluatedExpression( Rc<EvaluatedExpressionInner> );
+#[derive(Debug,Clone)]
+pub struct EvaluatedExpressionInner{
+    pub start: usize,
+    pub end: usize,
+    pub path: Rc<PathBuf>,
+    pub expr: EvaluatedExpr
+}
+
+impl Deref for EvaluatedExpression {
+    type Target = EvaluatedExpressionInner;
+    fn deref(&self) -> &Self::Target { &*self.0 }
+}
+
+impl PartialEq for EvaluatedExpression {
     fn eq(&self, other:&Self) -> bool {
         self.expr.eq(&other.expr)
+    }
+}
+
+impl EvaluatedExpression {
+    pub fn with_position(start: usize, end: usize, path: Rc<PathBuf>, expr: EvaluatedExpr) -> EvaluatedExpression {
+        EvaluatedExpression(Rc::new(EvaluatedExpressionInner{ start, end, path, expr }))
+    }
+    pub fn new(expr: EvaluatedExpr) -> EvaluatedExpression {
+        EvaluatedExpression::with_position(0,0,Rc::new(PathBuf::new()), expr)
+    }
+    pub fn into_expr(self) -> Option<EvaluatedExpr> {
+        match Rc::try_unwrap(self.0) {
+            Ok(e) => Some(e.expr),
+            Err(_) => None
+        }
     }
 }
 
@@ -221,8 +246,45 @@ impl PartialEq for PrimFunc {
 /// The context in which a thing is evaluated. This is read only and is passed
 /// to al prim funcs etc.
 pub struct Context {
-    pub path: PathBuf,
-    pub root: PathBuf,
-    pub file_cache: Cache<PathBuf,EvaluatedExpr>,
-    pub last: Vec<PathBuf>
+    pub path: Rc<PathBuf>,
+    pub root: Rc<PathBuf>,
+    pub file_cache: Cache<Rc<PathBuf>,EvaluatedExpr>,
+    pub last: Vec<Rc<PathBuf>>
+}
+
+impl Context {
+    pub fn path_ref(&self) -> &Path {
+        &**self.path
+    }
+    pub fn owned_path(&self) -> PathBuf {
+        (*self.path).clone()
+    }
+    pub fn owned_root(&self) -> PathBuf {
+        (*self.root).clone()
+    }
+    pub fn owned_last(&self) -> Vec<PathBuf> {
+        self.last.iter().map(|p| (**p).clone()).collect()
+    }
+}
+
+// Location of something
+#[derive(Clone,PartialEq,Debug)]
+pub struct Location {
+    start_loc: usize,
+    end_loc: usize
+}
+
+impl Location {
+    pub fn at(start: usize, end: usize) -> Location {
+        Location {
+            start_loc: start,
+            end_loc: end
+        }
+    }
+    pub fn start(&self) -> usize {
+        self.start_loc
+    }
+    pub fn end(&self) -> usize {
+        self.end_loc
+    }
 }

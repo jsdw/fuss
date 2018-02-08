@@ -5,6 +5,7 @@ use std::io::Read;
 use evaluator::eval;
 use parser::parse;
 use cache::Cache;
+use std::rc::Rc;
 use std::path::PathBuf;
 
 /// cast an expression to a boolean as best we can
@@ -35,7 +36,7 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
         .collect::<Vec<&str>>();
 
     // What path do we start at?
-    let mut final_path = if is_absolute { context.root.clone() } else { context.path.clone() };
+    let mut final_path = if is_absolute { context.owned_root() } else { context.owned_path() };
     // Remove the filename from it
     final_path.pop();
     // Traverse the import path to turn our starting path into our final one.
@@ -48,7 +49,7 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
     }
 
     let new_context = Context{
-        path: final_path,
+        path: Rc::new(final_path),
         root: context.root.clone(),
         file_cache: context.file_cache.clone(),
         last: { let mut l = context.last.clone(); l.push(context.path.clone()); l }
@@ -61,34 +62,38 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
 
 fn import_path(mut context: Context) -> Result<EvaluatedExpr, ImportError> {
 
-    context.path.set_extension("fuss");
+    context.path = {
+        let mut p = context.owned_path();
+        p.set_extension("fuss");
+        Rc::new(p)
+    };
 
     if context.last.iter().any(|p| p == &context.path) {
-        return Err(ImportError::ImportLoop(context.last.clone(), context.path.clone()));
+        return Err(ImportError::ImportLoop(context.owned_last(), context.owned_path()));
     }
 
     if let None = context.path.file_name() {
-        return Err(ImportError::CannotOpenFile(context.path.clone()));
+        return Err(ImportError::CannotOpenFile(context.owned_path()));
     }
 
     if context.file_cache.exists(&context.path) {
         return Ok( context.file_cache.get(&context.path).unwrap() );
     }
 
-    let mut file = File::open(&context.path).map_err(|_| ImportError::CannotOpenFile(context.path.clone()))?;
+    let mut file = File::open(context.path_ref()).map_err(|_| ImportError::CannotOpenFile(context.owned_path()))?;
 
     let mut file_contents = String::new();
-    file.read_to_string(&mut file_contents).map_err(|_| ImportError::CannotReadFile(context.path.clone()))?;
+    file.read_to_string(&mut file_contents).map_err(|_| ImportError::CannotReadFile(context.owned_path()))?;
     import_path_with_string(context, file_contents)
 
 }
 
 fn import_path_with_string(context: Context, contents: String) -> Result<EvaluatedExpr, ImportError> {
-    parse(&contents)
+    parse(&contents, &context)
         // eval parsed expr if aprsing is successful:
         .and_then(|expr| eval(&expr, super::get_prelude(), &context))
         // catch any parse/eval errors and wrap:
-        .map_err(|e| ImportError::CompileError(e, context.path.clone()).into())
+        .map_err(|e| ImportError::CompileError(e, context.owned_path()).into())
         // cache and return the final evaluatedexpr:
         .map(|e| {
             let expr = e.into_expr().expect("importing file: couldn't unwrap Rc");
@@ -102,8 +107,8 @@ fn import_path_with_string(context: Context, contents: String) -> Result<Evaluat
 pub fn import_string(file: String) -> Result<EvaluatedExpr, ImportError> {
 
     let context = Context{
-        path: PathBuf::new(),
-        root: PathBuf::new(),
+        path: Rc::new(PathBuf::new()),
+        root: Rc::new(PathBuf::new()),
         file_cache: Cache::new(),
         last: Vec::new()
     };
@@ -115,8 +120,8 @@ pub fn import_string(file: String) -> Result<EvaluatedExpr, ImportError> {
 pub fn import_root(path: &PathBuf) -> Result<EvaluatedExpr, ImportError> {
 
     let context = Context{
-        path: path.clone(),
-        root: path.clone(),
+        path: Rc::new(path.clone()),
+        root: Rc::new(path.clone()),
         file_cache: Cache::new(),
         last: Vec::new()
     };
