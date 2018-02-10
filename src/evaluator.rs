@@ -104,7 +104,8 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                             simplified_args.push(simplified_arg);
                         }
 
-                        match curr.clone().expr {
+                        let function_e = curr.clone();
+                        match function_e.expr {
                             EvaluatedExpr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
 
                                 // if too few args provided, set rest to undefined:
@@ -128,7 +129,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // update our current expr to be the evaluated result:
                                 curr = eval(func_e, scope.push(function_scope), context).map_err(|e| {
-                                    err(ApplicationError::FunctionError(e), At::location(&context.path, location.clone()))
+                                    err(ContextError::At(e), At::location(&context.path, location.clone()))
                                 })?;
 
                             },
@@ -333,12 +334,12 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
     for bit in bits {
         match *bit {
             CSSBit::Str(ref s) => string.push(s.to_owned()),
-            CSSBit::Expr(ref e) => {
-                let e = eval(e, scope.clone(),context)?;
+            CSSBit::Expr(ref expr) => {
+                let e = eval(expr, scope.clone(),context)?;
                 use prelude::casting::raw_string;
                 let s = match raw_string(&e.expr) {
                     Ok(s) => Ok(s),
-                    Err(error) => Err(err(error, At::position(&context.path, e.start, e.end)))
+                    Err(error) => Err(err(error, At::position(&context.path, expr.start, expr.end)))
                 }?;
                 string.push(s);
             }
@@ -363,7 +364,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match css_expr.expr {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), At::position(&context.path,css_expr.start,css_expr.end)))
+                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), At::position(&context.path,expr.start,expr.end)))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val} => {

@@ -72,12 +72,12 @@ pub enum Kind {
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match *self {
-            Kind::Str => "string",
-            Kind::Bool => "boolean",
-            Kind::Unit => "unit",
-            Kind::Colour => "colour",
-            Kind::Block => "block",
-            Kind::Func => "function",
+            Kind::Str => "a string",
+            Kind::Bool => "a boolean",
+            Kind::Unit => "a unit",
+            Kind::Colour => "a colour",
+            Kind::Block => "a block",
+            Kind::Func => "a function",
             Kind::Undefined => "undefined"
         })
     }

@@ -23,7 +23,8 @@ pub fn display_error(e: ImportError) {
                     , display_compile_error(&err)
                 )
             } else {
-                eprintln!("I ran into an error compiling the file:\n\n{}"
+                eprintln!("I ran into an error compiling the file {}:\n\n{}"
+                    , path.display()
                     , display_compile_error(&err)
                 )
             }
@@ -35,13 +36,16 @@ pub fn display_error(e: ImportError) {
 // Each time we hit an import error, we recurse into it using the new path.
 fn display_compile_error(err: &Error) -> String {
 
+
+    println!("{:?}", err);
+
     let mut out = match err.cause() {
         ErrorKind::ImportError(ImportError::CompileError(ref err, ref path)) => {
             let mut o = display_compile_error(err);
             o.push_str("\n");
             o
         },
-        ErrorKind::ApplicationError(ApplicationError::FunctionError(ref err)) => {
+        ErrorKind::ContextError(ContextError::At(ref err)) => {
             let mut o = display_compile_error(err);
             o.push_str("\n");
             o
@@ -60,7 +64,7 @@ fn display_compile_error(err: &Error) -> String {
     let desc = err.error_description();
     if !desc.is_empty() {
         out.push_str(&desc);
-        out.push('\n');
+        out.push_str(".\n");
     }
 
     out

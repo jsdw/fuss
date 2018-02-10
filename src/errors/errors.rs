@@ -89,7 +89,8 @@ pub enum ErrorKind {
     ApplicationError(ApplicationError),
     ImportError(ImportError),
     ShapeError(ShapeError),
-    SyntaxError(SyntaxError)
+    SyntaxError(SyntaxError),
+    ContextError(ContextError)
 }
 
 impl ErrorText for ErrorKind {
@@ -99,7 +100,8 @@ impl ErrorText for ErrorKind {
             ApplicationError(ref e) => e.error_summary(),
             ImportError(ref e) => e.error_summary(),
             ShapeError(ref e) => e.error_summary(),
-            SyntaxError(ref e) => e.error_summary()
+            SyntaxError(ref e) => e.error_summary(),
+            ContextError(ref e) => e.error_summary()
         }
     }
     fn error_description(&self) -> String {
@@ -108,7 +110,8 @@ impl ErrorText for ErrorKind {
             ApplicationError(ref e) => e.error_description(),
             ImportError(ref e) => e.error_description(),
             ShapeError(ref e) => e.error_description(),
-            SyntaxError(ref e) => e.error_description()
+            SyntaxError(ref e) => e.error_description(),
+            ContextError(ref e) => e.error_description()
         }
     }
 }
@@ -116,6 +119,11 @@ impl ErrorText for ErrorKind {
 impl <T> Into<Result<T,ErrorKind>> for ErrorKind {
     fn into(self: ErrorKind) -> Result<T,ErrorKind> {
         Err(self)
+    }
+}
+impl <T> Into<Result<T,ErrorKind>> for ContextError {
+    fn into(self: ContextError) -> Result<T,ErrorKind> {
+        Err(self.into())
     }
 }
 impl <T> Into<Result<T,ErrorKind>> for ApplicationError {
@@ -159,6 +167,31 @@ impl From<SyntaxError> for ErrorKind {
         ErrorKind::SyntaxError(err)
     }
 }
+impl From<ContextError> for ErrorKind {
+    fn from(err: ContextError) -> Self {
+        ErrorKind::ContextError(err)
+    }
+}
+
+// Error context - wrap other errors for positional information
+#[derive(Clone,PartialEq,Debug)]
+pub enum ContextError {
+    At(Error)
+}
+
+impl ErrorText for ContextError {
+    fn error_summary(&self) -> String {
+        use self::ContextError::*;
+        match *self {
+            At{..} => {
+                "From".to_owned()
+            }
+        }
+    }
+    fn error_description(&self) -> String {
+        String::new()
+    }
+}
 
 // Errors applying functions.
 #[derive(Clone,PartialEq,Debug)]
@@ -170,8 +203,7 @@ pub enum ApplicationError {
     WrongUnitOfArguments{index: usize, expected: Vec<String>, got: String},
     PropertyDoesNotExist(String),
     UnitMismatch,
-    CycleDetected(Vec<String>, String),
-    FunctionError(Error)
+    CycleDetected(Vec<String>, String)
 }
 
 impl ErrorText for ApplicationError {
@@ -201,9 +233,6 @@ impl ErrorText for ApplicationError {
             },
             CycleDetected(ref vars, ref var) => {
                 "A cycle has been detected".to_owned()
-            },
-            FunctionError{..} => {
-                "This function was called from".to_owned()
             }
         }
     }
@@ -224,7 +253,7 @@ impl ErrorText for ApplicationError {
             },
             WrongKindOfArguments{index, ref expected, got} => {
                 let e = expected.into_iter().map(|k| k.to_string()).collect::<Vec<_>>().join(", ");
-                format!("Argument {} is a {}, but the function expected one of {}", index+1, got, e)
+                format!("Argument {} is {}, but the function expected one of {}", index+1, got, e)
             },
             WrongUnitOfArguments{index, ref expected, ref got} => {
                 let e = expected.join(", ");
@@ -245,9 +274,6 @@ impl ErrorText for ApplicationError {
                     .collect::<Vec<_>>()
                     .join(" => ");
                 format!("Variables were caught accessing eachother in a cycle:\n  {}", cycle)
-            },
-            FunctionError{..} => {
-                String::new()
             }
         }
     }
@@ -368,10 +394,10 @@ impl ErrorText for ShapeError {
                 format!("nested blocks aren't allowed inside @font-face blocks")
             },
             InvalidExpressionInCssValue(ref expr) => {
-                format!("I can't handle an expression of type {} inside a CSS value", expr.kind())
+                format!("I can't interpolate an expression that's {} into a CSS value. I can interpolate strings, booleans, units and colors into CSS values", expr.kind())
             },
             NotACSSBlock(kind) => {
-                format!("I expected a CSS block but got a {}", kind)
+                format!("I expected a CSS block but something that's {}", kind)
             }
         }
     }
