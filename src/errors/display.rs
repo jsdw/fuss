@@ -7,11 +7,12 @@ use std::iter;
 use std::borrow::{Borrow,Cow};
 
 pub struct Options<'a> {
-    stdin: &'a str
+    stdin: &'a str,
+    tab_width: usize
 }
 impl <'a> Options<'a> {
     pub fn with_stdin(input: &str) -> Options {
-        Options { stdin: input }
+        Options { stdin: input, tab_width: 4 }
     }
 }
 
@@ -63,7 +64,6 @@ fn display_compile_error<'a>(err: &Error, opts: &Options<'a>) -> String {
     };
 
     let at = err.at();
-
     let file_cow = if at.file() == &*PathBuf::new() && !opts.stdin.is_empty() {
         Cow::Borrowed(opts.stdin)
     } else {
@@ -72,8 +72,8 @@ fn display_compile_error<'a>(err: &Error, opts: &Options<'a>) -> String {
 
     out.push_str(&err.error_summary());
     out.push_str(":\n\n");
-    out.push_str(&highlight_error(&err.at(), file_cow.borrow())
-        .unwrap_or_else(|| err.at().file().display().to_string()));
+    out.push_str(&highlight_error(&at, file_cow.borrow(), opts.tab_width)
+        .unwrap_or_else(|| at.file().display().to_string()));
     out.push('\n');
 
     let desc = err.error_description();
@@ -92,7 +92,7 @@ fn read_to_string<P: AsRef<Path>>(path: P) -> Option<String> {
 }
 
 // print the relevant part of the file with the error location highlighted:
-fn highlight_error(at: &At, file: &str) -> Option<String> {
+fn highlight_error(at: &At, file: &str, tab_width: usize) -> Option<String> {
 
     let by_lines: Vec<&str> = file.lines().collect();
     let Offsets{start_line, start_offset, end_line, end_offset} = get_lines_from_location(at.start(), at.end(), file);
@@ -114,30 +114,46 @@ fn highlight_error(at: &At, file: &str) -> Option<String> {
     for line in start_line..end_line+1 {
         let line_human = line+1;
         let num_str = padded_num(line_human, max_line_num_length);
-        let line_str = by_lines.get(line).unwrap_or(&"");
 
-        writeln!(&mut out, "{} | {}", num_str, line_str).unwrap();
+        let raw_line_str = by_lines.get(line).unwrap_or(&"");
+        let start_offset = adjust_offset_for_tabs(raw_line_str, start_offset, tab_width);
+        let end_offset = adjust_offset_for_tabs(raw_line_str, end_offset, tab_width);
+        let line_string = tabs_to_spaces(raw_line_str, tab_width);
+
+        writeln!(&mut out, "{} | {}", num_str, line_string).unwrap();
 
         if line == start_line {
             // cater for start and end offset being on same line, and for start offset
             // being at the end of the line (past it):
             let n = if start_line == end_line { end_offset.checked_sub(start_offset).unwrap_or(0).max(1) }
-                    else { line_str.len().checked_sub(start_offset).unwrap_or(0).max(1) };
+                    else { line_string.len().checked_sub(start_offset).unwrap_or(0).max(1) };
 
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}{}", line_num_spaces, spaces(start_offset), arrows).unwrap();
         } else if line > start_line && line < end_line {
-            let arrows: String = iter::repeat('^').take(line_str.len()).collect();
+            let arrows: String = iter::repeat('^').take(line_string.len()).collect();
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         } else if line == end_line {
             // cater for position being off the end of the line.
-            let n = line_str.len().checked_sub(end_offset).unwrap_or(0).max(1);
+            let n = line_string.len().checked_sub(end_offset).unwrap_or(0).max(1);
             let arrows: String = iter::repeat('^').take(n).collect();
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         }
     }
 
     Some(out)
+}
+
+// adjust some offset for a line to take into account tabs of some width.
+fn adjust_offset_for_tabs(line: &str, offset: usize, tab_width: usize) -> usize {
+    let tab_count = line.as_bytes().iter().take(offset).filter(|&&b| b == b'\t').count();
+    offset - tab_count + (tab_count * tab_width)
+}
+
+// swap tabs for spaces in some input
+fn tabs_to_spaces(line: &str, tab_width: usize) -> String {
+    let s = spaces(tab_width);
+    line.replace('\t', &s)
 }
 
 // returns a String consisting of n spaces

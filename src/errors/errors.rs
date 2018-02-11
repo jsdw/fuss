@@ -267,7 +267,7 @@ impl ErrorText for ApplicationError {
                     .cloned()
                     .collect::<Vec<_>>()
                     .join(" => ");
-                format!("Variables were caught accessing eachother in a cycle:\n  {}", cycle)
+                format!("Variables were caught accessing each other in a cycle:\n  {}", cycle)
             }
         }
     }
@@ -391,7 +391,7 @@ impl ErrorText for ShapeError {
                 format!("I can't interpolate an expression that's {} into a CSS value. I can interpolate strings, booleans, units and colors into CSS values", expr.kind())
             },
             NotACSSBlock(kind) => {
-                format!("I expected a CSS block but something that's {}", kind)
+                format!("I expected a CSS block but got something that's {}", kind)
             }
         }
     }
