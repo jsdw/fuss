@@ -21,7 +21,7 @@ use prelude::import::{import_root,import_string};
 use std::convert::From;
 use std::path::PathBuf;
 use types::*;
-use errors::*;
+use errors::display;
 use std::thread;
 
 use std::io::{self, Read};
@@ -40,6 +40,16 @@ fn run() {
         let matches = App::from_yaml(yaml).get_matches();
         let maybe_path = matches.value_of("input").map(PathBuf::from);
 
+        let input_string = if maybe_path.is_none() {
+            let mut buffer = String::new();
+            let stdin = io::stdin();
+            let mut handle = stdin.lock();
+            handle.read_to_string(&mut buffer).unwrap();
+            buffer
+        } else {
+            String::new()
+        };
+
         // import the FUSS file, compiling and evaluating it.
         // if path provided, use that, else pull from stdin.
         let res = match maybe_path {
@@ -47,17 +57,13 @@ fn run() {
                 import_root(&path)
             },
             None => {
-                let mut buffer = String::new();
-                let stdin = io::stdin();
-                let mut handle = stdin.lock();
-                handle.read_to_string(&mut buffer);
-                import_string(buffer)
+                import_string(&input_string)
             }
         };
 
         match res {
             Err(e) => {
-                display_error(e);
+                display::display_error(e, display::Options::with_stdin(&input_string));
             },
             Ok(EvaluatedExpr::Block(block)) => {
                 outputter::print_css(block);

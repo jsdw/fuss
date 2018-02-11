@@ -36,12 +36,6 @@ impl Error {
     pub fn at(&self) -> &At {
         &self.at
     }
-    pub fn location(&self) -> Location {
-        self.at.location.clone()
-    }
-    pub fn file(&self) -> &Path {
-        &self.at.file
-    }
     pub fn cause(&self) -> ErrorKind {
         (*self.cause).clone()
     }
@@ -231,7 +225,7 @@ impl ErrorText for ApplicationError {
             UnitMismatch => {
                 "Units do not match".to_owned()
             },
-            CycleDetected(ref vars, ref var) => {
+            CycleDetected{..} => {
                 "A cycle has been detected".to_owned()
             }
         }
@@ -367,7 +361,7 @@ impl ErrorText for ShapeError {
             InvalidExpressionInCssValue{..} => {
                 "Invalid value being inserted into this CSS".to_owned()
             },
-            NotACSSBlock(kind) => {
+            NotACSSBlock{..} => {
                 "This should be a CSS block".to_owned()
             }
         }
@@ -416,7 +410,7 @@ impl ErrorText for SyntaxError {
     fn error_description(&self) -> String {
         use self::SyntaxError::*;
         match *self {
-            BadRule{ ref positives, ref negatives } => {
+            BadRule{ positives: ref _positives, negatives: ref _negatives } => {
                 format!("Unexpected rule")
             }
             Custom{ ref message } => {

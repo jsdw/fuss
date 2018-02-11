@@ -41,7 +41,7 @@ block = { block_selector ~n~ block_open ~n~ block_inner ~n~ block_close }
     block_end_stmt = _{ n ~ &"}" | eoi | n ~ ";" ~ n }
     block_close = { "}" }
 
-    block_expression = { (variable_accessor | block) ~ END }
+    block_expression = { (variable_accessor | block) ~ end }
     block_interpolated_expression = !{ "${" ~n~ expression ~n~ "}" }
     block_assignment = { block_variable_assign ~n~ expression ~ block_end_stmt }
         block_variable_assign = ${ variable ~ ":" }
@@ -87,13 +87,13 @@ unit = ${ number ~ number_suffix }
 
 // is OK if next char matches either a ";" or a newline or end of file or "}" (which isn't consumed
 // , so it has to be valid next; this allows things at the end of blocks to not need newlines/;'s.
-END = _{ (n ~ ";" ~n) | N | (n ~ eoi) | (n ~ &"}") }
+end = _{ (n ~ ";" ~n) | must_newline | (n ~ eoi) | (n ~ &"}") }
 
 // matches but does not expect a newline:
 n = _{ ("\r" | "\n" | whitespace)* }
 
 // matches and expects a newline.
-N = _{ whitespace* ~ ("\r" | "\n")+ ~ n }
+must_newline = _{ whitespace* ~ ("\r" | "\n")+ ~ n }
 
 // normal whitespace allowed is just tabs and spaces; we're explicit about newlines.
 // "comment" rule seems to not be used at the moment, so we merge it with whitespace

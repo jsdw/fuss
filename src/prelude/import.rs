@@ -84,12 +84,12 @@ fn import_path(mut context: Context) -> Result<EvaluatedExpr, ImportError> {
 
     let mut file_contents = String::new();
     file.read_to_string(&mut file_contents).map_err(|_| ImportError::CannotReadFile(context.owned_path()))?;
-    import_path_with_string(context, file_contents)
+    import_path_with_str(context, &file_contents)
 
 }
 
-fn import_path_with_string(context: Context, contents: String) -> Result<EvaluatedExpr, ImportError> {
-    parse(&contents, &context)
+fn import_path_with_str(context: Context, contents: &str) -> Result<EvaluatedExpr, ImportError> {
+    parse(contents, &context)
         // eval parsed expr if aprsing is successful:
         .and_then(|expr| eval(&expr, super::get_prelude(), &context))
         // catch any parse/eval errors and wrap:
@@ -104,7 +104,7 @@ fn import_path_with_string(context: Context, contents: String) -> Result<Evaluat
 
 /// use this to eval a string into fuss; useful for interactive stuff but
 /// can't import files if we didn't start with an actual filepath.
-pub fn import_string(file: String) -> Result<EvaluatedExpr, ImportError> {
+pub fn import_string(file: &str) -> Result<EvaluatedExpr, ImportError> {
 
     let context = Context{
         path: Rc::new(PathBuf::new()),
@@ -113,7 +113,7 @@ pub fn import_string(file: String) -> Result<EvaluatedExpr, ImportError> {
         last: Vec::new()
     };
 
-    import_path_with_string(context, file)
+    import_path_with_str(context, file)
 }
 
 /// our standard import mechanism, to get us going.

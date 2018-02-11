@@ -1,11 +1,21 @@
 use errors::errors::*;
-use std::path::PathBuf;
+use std::path::{Path,PathBuf};
 use std::fs::File;
 use std::io::Read;
 use std::fmt::Write;
 use std::iter;
+use std::borrow::{Borrow,Cow};
 
-pub fn display_error(e: ImportError) {
+pub struct Options<'a> {
+    stdin: &'a str
+}
+impl <'a> Options<'a> {
+    pub fn with_stdin(input: &str) -> Options {
+        Options { stdin: input }
+    }
+}
+
+pub fn display_error<'a>(e: ImportError, opts: Options<'a>) {
     use self::ImportError::*;
     match e {
         CannotImportNoPathSet | ImportLoop{..} => {
@@ -20,12 +30,12 @@ pub fn display_error(e: ImportError) {
         CompileError(err, path) => {
             if path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , display_compile_error(&err)
+                    , display_compile_error(&err, &opts)
                 )
             } else {
                 eprintln!("I ran into an error compiling the file {}:\n\n{}"
                     , path.display()
-                    , display_compile_error(&err)
+                    , display_compile_error(&err, &opts)
                 )
             }
         }
@@ -34,16 +44,16 @@ pub fn display_error(e: ImportError) {
 
 // context provides the current path of the file that the error happened in.
 // Each time we hit an import error, we recurse into it using the new path.
-fn display_compile_error(err: &Error) -> String {
+fn display_compile_error<'a>(err: &Error, opts: &Options<'a>) -> String {
 
     let mut out = match err.cause() {
-        ErrorKind::ImportError(ImportError::CompileError(ref err, ref path)) => {
-            let mut o = display_compile_error(err);
+        ErrorKind::ImportError(ImportError::CompileError(ref err, ..)) => {
+            let mut o = display_compile_error(err, opts);
             o.push_str("\n");
             o
         },
         ErrorKind::ContextError(ContextError::At(ref err)) => {
-            let mut o = display_compile_error(err);
+            let mut o = display_compile_error(err, opts);
             o.push_str("\n");
             o
         },
@@ -52,9 +62,17 @@ fn display_compile_error(err: &Error) -> String {
         }
     };
 
+    let at = err.at();
+
+    let file_cow = if at.file() == &*PathBuf::new() && !opts.stdin.is_empty() {
+        Cow::Borrowed(opts.stdin)
+    } else {
+        Cow::Owned(read_to_string(at.file()).unwrap_or(String::new()))
+    };
+
     out.push_str(&err.error_summary());
     out.push_str(":\n\n");
-    out.push_str(&highlight_error(&err.at())
+    out.push_str(&highlight_error(&err.at(), file_cow.borrow())
         .unwrap_or_else(|| err.at().file().display().to_string()));
     out.push('\n');
 
@@ -67,14 +85,17 @@ fn display_compile_error(err: &Error) -> String {
     out
 }
 
-// print the relevant part of the file with the error location highlighted:
-fn highlight_error(at: &At) -> Option<String> {
-
+fn read_to_string<P: AsRef<Path>>(path: P) -> Option<String> {
     let mut file = String::new();
-    File::open(at.file()).ok()?.read_to_string(&mut file).ok()?;
-    let by_lines: Vec<&str> = file.lines().collect();
+    File::open(path).ok()?.read_to_string(&mut file).ok()?;
+    Some(file)
+}
 
-    let Offsets{start_line, start_offset, end_line, end_offset} = get_lines_from_location(at, &file);
+// print the relevant part of the file with the error location highlighted:
+fn highlight_error(at: &At, file: &str) -> Option<String> {
+
+    let by_lines: Vec<&str> = file.lines().collect();
+    let Offsets{start_line, start_offset, end_line, end_offset} = get_lines_from_location(at.start(), at.end(), file);
 
     let max_line_num_length = (start_line+1..end_line+2).fold(0, |max,n| {
         max.max(n.to_string().len())
@@ -137,10 +158,7 @@ fn padded_num(num: usize, len: usize) -> String {
 
 // given a start and end byte offset, we give back start and end line counts
 // and offsets.
-fn get_lines_from_location(at: &At, file: &str) -> Offsets {
-
-    let start = at.start();
-    let end = at.end();
+fn get_lines_from_location(start: usize, end: usize, file: &str) -> Offsets {
 
     let mut start_line = 0;
     let mut start_offset = 0;
@@ -174,13 +192,4 @@ struct Offsets {
     start_offset: usize,
     end_line: usize,
     end_offset: usize
-}
-
-struct ErrorContext {
-    path: PathBuf
-}
-impl ErrorContext {
-    fn new(path: PathBuf) -> ErrorContext {
-        ErrorContext { path: path }
-    }
 }

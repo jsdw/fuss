@@ -88,7 +88,7 @@ pub fn print_css(block: EvaluatedBlock) {
 
     let stdout = io::stdout();
     let mut handle = stdout.lock();
-    handle.write_all(s.as_bytes());
+    handle.write_all(s.as_bytes()).expect("failed to write to stdout");
 
 }
 
