@@ -36,9 +36,6 @@ pub fn display_error(e: ImportError) {
 // Each time we hit an import error, we recurse into it using the new path.
 fn display_compile_error(err: &Error) -> String {
 
-
-    println!("{:?}", err);
-
     let mut out = match err.cause() {
         ErrorKind::ImportError(ImportError::CompileError(ref err, ref path)) => {
             let mut o = display_compile_error(err);
@@ -118,7 +115,6 @@ fn highlight_error(at: &At) -> Option<String> {
             writeln!(&mut out, "{} | {}", line_num_spaces, arrows).unwrap();
         }
     }
-    writeln!(&mut out, "{} |", line_num_spaces).unwrap();
 
     Some(out)
 }

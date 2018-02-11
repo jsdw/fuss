@@ -120,8 +120,8 @@ pub enum EvaluatedExpr {
     /// A primitive function; these only show up in Scope and so are always pre-evaluated
     PrimFunc(PrimFunc),
     /// A function eg ($a, $b) => $a + $b. This contains an unevaluated expression that needs evaluating
-    /// but gains a Scope over unevaluated functions so we know how to evaluate it.
-    Func{ inputs: Vec<String>, output: Expression, scope: Scope },
+    /// but gains a Scope and Context so that we can evaluate it with respect to its original location
+    Func{ inputs: Vec<String>, output: Expression, scope: Scope, context: Context },
     /// Evaluated blocks contain pre-evaluated content, ready to display.
     Block(EvaluatedBlock)
 }
@@ -245,11 +245,24 @@ impl PartialEq for PrimFunc {
 
 /// The context in which a thing is evaluated. This is read only and is passed
 /// to al prim funcs etc.
+#[derive(Clone)]
 pub struct Context {
     pub path: Rc<PathBuf>,
     pub root: Rc<PathBuf>,
     pub file_cache: Cache<Rc<PathBuf>,EvaluatedExpr>,
     pub last: Vec<Rc<PathBuf>>
+}
+
+// contexts appear equal as long as the file path and root path are equal.
+impl PartialEq for Context {
+    fn eq(&self, other: &Context) -> bool {
+        self.path == other.path && self.root == other.root
+    }
+}
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<<context>>")
+    }
 }
 
 impl Context {

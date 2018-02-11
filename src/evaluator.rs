@@ -65,7 +65,8 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                 EvaluatedExpr::Func{
                     inputs: inputs.clone(),
                     output: output.clone(),
-                    scope: scope.clone()
+                    scope: scope.clone(),
+                    context: context.clone()
                 }
             ))
 
@@ -106,7 +107,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                         let function_e = curr.clone();
                         match function_e.expr {
-                            EvaluatedExpr::Func{ inputs: ref arg_names, output: ref func_e, ref scope } => {
+                            EvaluatedExpr::Func{ inputs: ref arg_names, output: ref func_e, scope: ref func_scope, context: ref func_context } => {
 
                                 // if too few args provided, set rest to undefined:
                                 while arg_names.len() > simplified_args.len() {
@@ -127,8 +128,10 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                     function_scope.insert(name.to_owned(),arg);
                                 }
 
-                                // update our current expr to be the evaluated result:
-                                curr = eval(func_e, scope.push(function_scope), context).map_err(|e| {
+                                // update our current expr to be the evaluated result. We evaluate the func_e expression
+                                // with respect to the scope and context it was seen against, and wrap any errors
+                                // with the location the function was called from (here).
+                                curr = eval(func_e, func_scope.push(function_scope), func_context).map_err(|e| {
                                     err(ContextError::At(e), At::location(&context.path, location.clone()))
                                 })?;
 
