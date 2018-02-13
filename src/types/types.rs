@@ -19,7 +19,7 @@ pub struct Block {
 #[derive(PartialEq,Debug,Clone)]
 pub enum CSSEntry {
     Expr(Expression),
-    KeyVal{ key: Vec<CSSBit>, val: Vec<CSSBit> }
+    KeyVal{ key: Vec<CSSBit>, val: Vec<CSSBit>, location: Location }
 }
 
 #[derive(PartialEq,Debug,Clone)]
@@ -41,7 +41,7 @@ pub struct EvaluatedBlock {
 #[derive(PartialEq,Debug,Clone)]
 pub enum EvaluatedCSSEntry {
     Block(EvaluatedBlock),
-    KeyVal{ key: String, val: String}
+    KeyVal{ key: String, val: String, at: At }
 }
 
 #[derive(PartialEq,Debug,Clone,Copy)]
@@ -281,7 +281,7 @@ impl Context {
 }
 
 // Location of something
-#[derive(Clone,PartialEq,Debug)]
+#[derive(Copy,Clone,PartialEq,Debug)]
 pub struct Location {
     start_loc: usize,
     end_loc: usize

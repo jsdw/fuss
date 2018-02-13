@@ -270,7 +270,7 @@ fn dependencies(e: &Expression, search: &HashSet<String>) -> HashSet<String> {
                 CSSEntry::Expr(ref e) => {
                     get_dependencies_of(e, search, out);
                 },
-                CSSEntry::KeyVal{ ref key, ref val } => {
+                CSSEntry::KeyVal{ ref key, ref val, .. } => {
                     get_dependencies_of_cssbits(key, search, out);
                     get_dependencies_of_cssbits(val, search, out);
                 }
@@ -370,12 +370,13 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                     _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), At::position(&context.path,expr.start,expr.end)))
                 };
             },
-            CSSEntry::KeyVal{ref key, ref val} => {
+            CSSEntry::KeyVal{ref key, ref val, location} => {
                 let key = try_cssbits_to_string(key, scope, context)?;
                 let val = try_cssbits_to_string(val, scope, context)?;
                 out.push(EvaluatedCSSEntry::KeyVal{
                     key: key,
-                    val: val
+                    val: val,
+                    at: At::location(context.path.clone(), location)
                 });
             }
         }

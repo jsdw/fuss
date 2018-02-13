@@ -347,13 +347,15 @@ parser_rules!{
     }
 
     fn block_css(pair: MyPair) -> CSSEntry {
+        let loc = pair.clone().into_span();
         match_rules!{pair,
             let key = block_css_key;
             let val = block_css_value;
         }
         CSSEntry::KeyVal{
             key: block_css_key(key),
-            val: block_css_value(val)
+            val: block_css_value(val),
+            location: Location::at(loc.start(),loc.end())
         }
     }
 

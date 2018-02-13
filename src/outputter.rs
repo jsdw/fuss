@@ -298,7 +298,7 @@ impl Items {
         for entry in entries {
 
             match entry {
-                EvaluatedCSSEntry::KeyVal{key,val} => {
+                EvaluatedCSSEntry::KeyVal{key,val,..} => {
                     keyvals.push( (key,val) );
                 },
 
@@ -385,7 +385,7 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
                         let mut keyvals = vec![];
                         for entry in block.css {
                             match entry {
-                                EvaluatedCSSEntry::KeyVal{key,val} => {
+                                EvaluatedCSSEntry::KeyVal{key,val,..} => {
                                     keyvals.push( (key,val) );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
@@ -414,7 +414,7 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
     let mut keyvals = vec![];
     for item in block.css {
         match item {
-            EvaluatedCSSEntry::KeyVal{key,val} => {
+            EvaluatedCSSEntry::KeyVal{key,val,..} => {
                 keyvals.push( (key,val) );
             },
             EvaluatedCSSEntry::Block(_) => {
