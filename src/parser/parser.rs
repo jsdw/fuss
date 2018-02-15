@@ -515,11 +515,11 @@ mod test {
     }
 
     fn a_prop(name: &str) -> Accessor {
-        Accessor::Property{ name: s(name) }
+        Accessor::Property{ name: s(name), location: Location::at(0,0) }
     }
 
     fn a_fn(args: Vec<Expression>) -> Accessor {
-        Accessor::Function{ args: args }
+        Accessor::Function{ args: args, location: Location::at(0,0) }
     }
 
     fn op(expression: Expression, args: Vec<Expression>) -> Expression {
@@ -552,7 +552,7 @@ mod test {
                 use std::fmt::Write;
                 let mut errors = String::new();
                 $(
-                    if let Err(e) = MyGrammar::parse_str(Rule::$token, $input) {
+                    if let Err(e) = MyGrammar::parse(Rule::$token, $input) {
                         writeln!(&mut errors, "parse_test: Error parsing: \n{}\n\n{}", $input, e);
                     }
                 )+
@@ -573,7 +573,7 @@ mod test {
                 let mut errors = String::new();
 
                 $({
-                    match MyGrammar::parse_str(Rule::expression, $input) {
+                    match MyGrammar::parse(Rule::expression, $input) {
                         Ok(mut pairs) => {
 
                             let res = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(||
@@ -914,6 +914,7 @@ mod test {
                 scope: hash_map![],
                 css: vec![
                     CSSEntry::KeyVal{
+                        location: Location::at(0,0),
                         key: vec![CSSBit::Str(s("hi"))],
                         val: vec![
                             CSSBit::Expr(var("a")),
@@ -996,6 +997,7 @@ mod test {
                 selector: vec![],
                 css: vec![
                     CSSEntry::KeyVal{
+                        location: Location::at(0,0),
                         key: vec![CSSBit::Str(s("border"))],
                         val: vec![CSSBit::Str(s("1px solid black"))]
                     },
@@ -1004,6 +1006,7 @@ mod test {
                         selector: vec![],
                         css: vec![
                             CSSEntry::KeyVal{
+                                location: Location::at(0,0),
                                 key: vec![CSSBit::Str(s("lark"))],
                                 val: vec![CSSBit::Str(s("another thing hereee"))]
                             }
@@ -1017,6 +1020,7 @@ mod test {
                 selector: vec![],
                 css: vec![
                     CSSEntry::KeyVal{
+                        location: Location::at(0,0),
                         key: vec![CSSBit::Str(s("border"))],
                         val: vec![CSSBit::Expr(app(
                             var("o"),
@@ -1035,6 +1039,7 @@ mod test {
                         selector: vec![CSSBit::Str(s(".hello "))],
                         css: vec![
                             CSSEntry::KeyVal{
+                                location: Location::at(0,0),
                                 key: vec![CSSBit::Str(s("a"))],
                                 val: vec![CSSBit::Str(s("1"))]
                             }
@@ -1045,6 +1050,7 @@ mod test {
                         selector: vec![CSSBit::Str(s(".another "))],
                         css: vec![
                             CSSEntry::KeyVal{
+                                location: Location::at(0,0),
                                 key: vec![CSSBit::Str(s("b"))],
                                 val: vec![CSSBit::Str(s("1"))]
                             }

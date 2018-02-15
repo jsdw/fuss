@@ -16,10 +16,22 @@ pub struct Block {
     pub css: Vec<CSSEntry>
 }
 
-#[derive(PartialEq,Debug,Clone)]
+#[derive(Debug,Clone)]
 pub enum CSSEntry {
     Expr(Expression),
     KeyVal{ key: Vec<CSSBit>, val: Vec<CSSBit>, location: Location }
+}
+
+// position independent equality
+impl PartialEq for CSSEntry {
+    fn eq(&self, other:&Self) -> bool {
+        use self::CSSEntry::*;
+        match (self,other) {
+            (&Expr(ref e1), &Expr(ref e2)) => e1 == e2,
+            (&KeyVal{key:ref k1, val: ref v1, ..}, &KeyVal{key:ref k2, val: ref v2, ..}) => k1 == k2 && v1 == v2,
+            _ => false
+        }
+    }
 }
 
 #[derive(PartialEq,Debug,Clone)]
@@ -142,10 +154,22 @@ impl EvaluatedExpr {
 }
 
 /// Describes how to dig into a thing to get something out.
-#[derive(PartialEq,Debug,Clone)]
+#[derive(Debug,Clone)]
 pub enum Accessor {
     Property{ name: String, location: Location },
     Function{ args: Vec<Expression>, location: Location }
+}
+
+// position independent equality
+impl PartialEq for Accessor {
+    fn eq(&self, other:&Self) -> bool {
+        use self::Accessor::*;
+        match (self,other) {
+            (&Property{name:ref n1, ..}, &Property{name:ref n2, ..}) => n1 == n2,
+            (&Function{args:ref a1, ..}, &Function{args:ref a2, ..}) => a1 == a2,
+            _ => false
+        }
+    }
 }
 
 /// An Expr paired with the start and end position
@@ -201,6 +225,7 @@ impl Deref for EvaluatedExpression {
     fn deref(&self) -> &Self::Target { &*self.0 }
 }
 
+// position independent equality
 impl PartialEq for EvaluatedExpression {
     fn eq(&self, other:&Self) -> bool {
         self.expr.eq(&other.expr)
