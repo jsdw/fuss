@@ -244,6 +244,9 @@ impl EvaluatedExpression {
             expr: self.expr.clone()
         }
     }
+    pub fn locations(&self) -> SmallVec<At> {
+        self.locations.clone()
+    }
     pub fn new(expr: EvaluatedExpr) -> EvaluatedExpression {
         EvaluatedExpression::with_position(0,0,Rc::new(PathBuf::new()), expr)
     }

@@ -1,7 +1,7 @@
 use std::path::{PathBuf};
 use std::iter;
 use std::convert::Into;
-use types::{EvaluatedExpr,VarType,Kind,At};
+use types::{EvaluatedExpr,VarType,Kind,At,SmallVec};
 use parser::parser::Rule;
 
 // Usage:
@@ -15,7 +15,7 @@ use parser::parser::Rule;
 // errors::Shape/Application etc, or a pre-existing Error.
 #[derive(Clone,PartialEq,Debug)]
 pub struct Error {
-    at: Box<At>,
+    at: SmallVec<At>,
     cause: Box<ErrorKind>
 }
 impl ErrorText for Error {
@@ -27,21 +27,21 @@ impl ErrorText for Error {
     }
 }
 impl Error {
-    pub fn new<E: Into<ErrorKind>>(err: E, pos: At) -> Error {
+    pub fn new<E: Into<ErrorKind>, L: Into<SmallVec<At>>>(err: E, pos: L) -> Error  {
         Error {
-            at: Box::new(pos),
+            at: pos.into(),
             cause: Box::new(err.into())
         }
     }
     pub fn at(&self) -> &At {
-        &self.at
+        self.at.last()
     }
     pub fn cause(&self) -> ErrorKind {
         (*self.cause).clone()
     }
 }
-pub fn err<E: Into<ErrorKind>>(err: E, pos: At) -> Error {
-    Error::new(err.into(),pos)
+pub fn err<E: Into<ErrorKind>, L: Into<SmallVec<At>>>(err: E, pos: L) -> Error {
+    Error::new(err,pos)
 }
 
 // An error falls into one of these categories,

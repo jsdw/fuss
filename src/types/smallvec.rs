@@ -1,10 +1,11 @@
 
 use std::mem;
+use std::convert::From;
 use SmallVec::*;
 
 /// A struct for storing items that will store one or two items allocation free on the stack,
 /// and transparently expand into a vector if more items need to be stored.
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub enum SmallVec<T> {
     Empty,
     One(T),
@@ -15,6 +16,22 @@ pub enum SmallVec<T> {
 impl <T> SmallVec<T> {
     pub fn one(item: T) -> SmallVec<T> {
         One(item)
+    }
+    pub fn first(&self) -> &T {
+        match *self {
+            Empty => unreachable!(),
+            One(ref item) => item,
+            Two(ref item, ..) => item,
+            Heap(ref items) => items.first().expect("one item always expected in smallvec")
+        }
+    }
+    pub fn last(&self) -> &T {
+        match *self {
+            Empty => unreachable!(),
+            One(ref item) => item,
+            Two(_, ref item) => item,
+            Heap(ref items) => items.last().expect("one item always expected in smallvec")
+        }
     }
     pub fn push(&mut self, item: T) {
         let next = match mem::replace(self, Empty) {
@@ -84,6 +101,12 @@ impl <T: Clone> SmallVec<T> {
                 Heap(items)
             }
         }
+    }
+}
+
+impl <T> From<T> for SmallVec<T> {
+    fn from(item: T) -> SmallVec<T> {
+        SmallVec::one(item)
     }
 }
 

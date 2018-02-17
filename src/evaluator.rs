@@ -342,7 +342,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
                 use prelude::casting::raw_string;
                 let s = match raw_string(e.expr()) {
                     Ok(s) => Ok(s),
-                    Err(error) => Err(err(error, At::position(&context.path, expr.start, expr.end)))
+                    Err(error) => Err(err(error, e.locations()))
                 }?;
                 string.push(s);
             }
@@ -367,7 +367,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match *css_expr.expr() {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    ref e => return Err(err(ShapeError::NotACSSBlock(e.kind()), At::position(&context.path,expr.start,expr.end)))
+                    ref e => return Err(err(ShapeError::NotACSSBlock(e.kind()), css_expr.locations()))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val, location} => {
