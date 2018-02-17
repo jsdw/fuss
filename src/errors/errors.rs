@@ -1,7 +1,7 @@
-use std::path::{PathBuf,Path};
+use std::path::{PathBuf};
 use std::iter;
 use std::convert::Into;
-use types::{EvaluatedExpr,VarType,Kind,Location};
+use types::{EvaluatedExpr,VarType,Kind,At};
 use parser::parser::Rule;
 
 // Usage:
@@ -42,37 +42,6 @@ impl Error {
 }
 pub fn err<E: Into<ErrorKind>>(err: E, pos: At) -> Error {
     Error::new(err.into(),pos)
-}
-
-// Where was the error at?
-#[derive(Clone,PartialEq,Debug)]
-pub struct At {
-    location: Location,
-    file: PathBuf
-}
-
-impl At {
-    pub fn position<File: AsRef<PathBuf>>(file: File, start: usize, end: usize) -> At {
-        At {
-            location: Location::at(start,end),
-            file: file.as_ref().clone(),
-        }
-    }
-    pub fn location<File: AsRef<PathBuf>>(file: File, loc: Location) -> At {
-        At {
-            location: loc,
-            file: file.as_ref().clone()
-        }
-    }
-    pub fn start(&self) -> usize {
-        self.location.start()
-    }
-    pub fn end(&self) -> usize {
-        self.location.end()
-    }
-    pub fn file(&self) -> &Path {
-        &*self.file
-    }
 }
 
 // An error falls into one of these categories,

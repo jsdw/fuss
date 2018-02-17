@@ -29,21 +29,21 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
         Expr::Var(ref name, ty) => {
 
             scope.find(name, ty).map_or(
-                Err(err(ApplicationError::CantFindVariable(name.clone(), ty), At::position(&context.path, e.start,e.end))),
+                Err(err(ApplicationError::CantFindVariable(name.clone(), ty), At::position(&context.path, e.start, e.end))),
                 |var| { Ok(var.clone()) }
             )
 
         },
 
         // If simplifies based on the boolean-ness of the condition!
-        Expr::If{ ref cond, then: ref then_e, otherwise: ref else_e } => {
+        Expr::If{ cond: ref raw_cond, then: ref then_e, otherwise: ref else_e } => {
 
-            let cond = eval(cond, scope.clone(), context)?;
+            let cond = eval(raw_cond, scope.clone(), context)?;
 
             use prelude::casting::raw_boolean;
-            let is_true = match raw_boolean(&cond.expr){
+            let is_true = match raw_boolean(cond.expr()){
                 Ok(b) => Ok(b),
-                Err(e) => Err(err(e, At::position(&context.path, cond.start, cond.end)))
+                Err(e) => Err(err(e, At::position(&context.path, raw_cond.start, raw_cond.end)))
             }?;
 
             if is_true {
@@ -83,7 +83,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                     Accessor::Property{ ref name, ref location } => {
 
-                        if let EvaluatedExpr::Block(ref block) = curr.clone().expr {
+                        if let EvaluatedExpr::Block(ref block) = *curr.clone().expr() {
                             match block.scope.get(name) {
                                 Some(val) => {
                                     curr = val.clone();
@@ -106,7 +106,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                         }
 
                         let function_e = curr.clone();
-                        match function_e.expr {
+                        match *function_e.expr() {
                             EvaluatedExpr::Func{ inputs: ref arg_names, output: ref func_e, scope: ref func_scope, context: ref func_context } => {
 
                                 // if too few args provided, set rest to undefined:
@@ -340,7 +340,7 @@ fn try_cssbits_to_string(bits: &Vec<CSSBit>, scope: &Scope, context: &Context) -
             CSSBit::Expr(ref expr) => {
                 let e = eval(expr, scope.clone(),context)?;
                 use prelude::casting::raw_string;
-                let s = match raw_string(&e.expr) {
+                let s = match raw_string(e.expr()) {
                     Ok(s) => Ok(s),
                     Err(error) => Err(err(error, At::position(&context.path, expr.start, expr.end)))
                 }?;
@@ -365,9 +365,9 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
         match *val {
             CSSEntry::Expr(ref expr) => {
                 let css_expr = eval(expr, scope.clone(),context)?;
-                match css_expr.expr {
+                match *css_expr.expr() {
                     EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
-                    _ => return Err(err(ShapeError::NotACSSBlock(css_expr.expr.kind()), At::position(&context.path,expr.start,expr.end)))
+                    ref e => return Err(err(ShapeError::NotACSSBlock(e.kind()), At::position(&context.path,expr.start,expr.end)))
                 };
             },
             CSSEntry::KeyVal{ref key, ref val, location} => {
@@ -388,6 +388,6 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
 #[cfg(test)]
 pub mod tests {
 
-    use super::*;
+    // use super::*;
 
 }

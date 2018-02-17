@@ -8,7 +8,7 @@ pub fn boolean(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
         return ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into();
     }
 
-    let raw = raw_boolean(&args[0].expr)?;
+    let raw = raw_boolean(args[0].expr())?;
     Ok(EvaluatedExpr::Bool(raw))
 
 }
@@ -20,7 +20,7 @@ pub fn string(args: &Vec<EvaluatedExpression>, _context: &Context) -> PrimRes {
         return ApplicationError::WrongNumberOfArguments{ expected: 1, got: args.len() }.into();
     }
 
-    let raw = raw_string(&args[0].expr)?;
+    let raw = raw_string(args[0].expr())?;
     Ok(EvaluatedExpr::Str(raw))
 
 }

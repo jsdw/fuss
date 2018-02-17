@@ -34,8 +34,41 @@ impl <T> SmallVec<T> {
         };
         *self = next;
     }
+    fn get(&self, pos: usize) -> Option<&T> {
+        match *self {
+            Empty => None,
+            One(ref item) => {
+                if pos == 0 {
+                    Some(item)
+                } else {
+                    None
+                }
+            },
+            Two(ref item1, ref item2) => {
+                if pos == 0 {
+                    Some(item1)
+                } else if pos == 1 {
+                    Some(item2)
+                } else {
+                    None
+                }
+            },
+            Heap(ref items) => {
+                items.get(pos)
+            }
+        }
+    }
+    pub fn len(&self) -> usize {
+        match *self {
+            Empty => 0,
+            One{..} => 1,
+            Two{..} => 2,
+            Heap(ref items) => items.len()
+        }
+    }
     pub fn iter(&self) -> Iter<T> {
-        Iter { vec: self, pos: 0 }
+        let len = self.len();
+        Iter { vec: self, pos: 0, seen_back: len }
     }
 }
 
@@ -57,35 +90,29 @@ impl <T: Clone> SmallVec<T> {
 /// An iterator over a SmallVec yielding references to items contained within
 pub struct Iter<'a, T: 'a> {
     vec: &'a SmallVec<T>,
-    pos: usize
+    pos: usize,
+    seen_back: usize
 }
 
 impl <'a,T> Iterator for Iter<'a,T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        let ret = match *self.vec {
-            Empty => None,
-            One(ref item) => {
-                if self.pos == 0 {
-                    Some(item)
-                } else {
-                    None
-                }
-            },
-            Two(ref item1, ref item2) => {
-                if self.pos == 0 {
-                    Some(item1)
-                } else if self.pos == 1 {
-                    Some(item2)
-                } else {
-                    None
-                }
-            },
-            Heap(ref items) => {
-                items.get(self.pos)
-            }
-        };
+        if self.pos == self.seen_back {
+            return None
+        }
+        let ret = self.vec.get(self.pos);
         self.pos += 1;
+        ret
+    }
+}
+
+impl <'a,T> DoubleEndedIterator for Iter<'a,T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.seen_back == 0 || self.pos == self.seen_back {
+            return None
+        }
+        self.seen_back -= 1;
+        let ret = self.vec.get(self.seen_back);
         ret
     }
 }
@@ -97,6 +124,9 @@ mod test {
 
     fn into_vec<T: Clone>(v: SmallVec<T>) -> Vec<T> {
         v.iter().cloned().collect()
+    }
+    fn into_vec_rev<T: Clone>(v: SmallVec<T>) -> Vec<T> {
+        v.iter().rev().cloned().collect()
     }
 
     #[test]
@@ -147,6 +177,71 @@ mod test {
         assert_eq!(into_vec(v2), vec!['a', 'b']);
         assert_eq!(into_vec(v3), vec!['a', 'b', 'c']);
         assert_eq!(into_vec(v4), vec!['a', 'b', 'c', 'd']);
+    }
+
+    #[test]
+    fn one_rev() {
+        let v = SmallVec::one('a');
+        assert_eq!(into_vec_rev(v), vec!['a']);
+    }
+
+    #[test]
+    fn two_rev() {
+        let mut v = SmallVec::one('a');
+        v.push('b');
+        assert_eq!(into_vec_rev(v), vec!['b','a']);
+    }
+
+    #[test]
+    fn three_rev() {
+        let mut v = SmallVec::one('a');
+        v.push('b');
+        v.push('c');
+        assert_eq!(into_vec_rev(v), vec!['c','b','a']);
+    }
+
+    #[test]
+    fn four_rev() {
+        let mut v = SmallVec::one('a');
+        v.push('b');
+        v.push('c');
+        v.push('d');
+        assert_eq!(into_vec_rev(v), vec!['d','c','b','a']);
+    }
+
+    #[test]
+    fn both_ways_one() {
+        let v = SmallVec::one('a');
+        let mut iter = v.iter();
+        assert_eq!(iter.next_back(), Some(&'a'));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next_back(), None);
+    }
+
+    #[test]
+    fn both_ways_two() {
+        let mut v = SmallVec::one('a');
+        v.push('b');
+        let mut iter = v.iter();
+        assert_eq!(iter.next_back(), Some(&'b'));
+        assert_eq!(iter.next(), Some(&'a'));
+        assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn both_ways_multiple() {
+        let mut v = SmallVec::one('a');
+        v.push('b');
+        v.push('c');
+        v.push('d');
+        let mut iter = v.iter();
+        assert_eq!(iter.next_back(), Some(&'d'));
+        assert_eq!(iter.next(), Some(&'a'));
+        assert_eq!(iter.next_back(), Some(&'c'));
+        assert_eq!(iter.next(), Some(&'b'));
+        assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.next(), None);
     }
 
 }

@@ -3,9 +3,11 @@ use cache::Cache;
 use std::path::{PathBuf,Path};
 use std::fmt;
 use std::ops::Deref;
+use std::borrow::Borrow;
 use std::rc::Rc;
 use types::colour;
 use types::scope::{Scope};
+use types::smallvec::SmallVec;
 use errors::*;
 
 /// Unevaluated blocks and their parts
@@ -211,18 +213,15 @@ impl Expression {
 // During evaluation, we append file info to each expression.
 // Otherwise, it's basically the same.
 #[derive(Debug,Clone)]
-pub struct EvaluatedExpression( Rc<EvaluatedExpressionInner> );
-#[derive(Debug,Clone)]
-pub struct EvaluatedExpressionInner{
-    pub start: usize,
-    pub end: usize,
-    pub path: Rc<PathBuf>,
-    pub expr: EvaluatedExpr
+pub struct EvaluatedExpression {
+    locations: SmallVec<At>,
+    expr: Rc<EvaluatedExpr>
 }
 
-impl Deref for EvaluatedExpression {
-    type Target = EvaluatedExpressionInner;
-    fn deref(&self) -> &Self::Target { &*self.0 }
+impl EvaluatedExpression {
+    pub fn expr(&self) -> &EvaluatedExpr {
+        &*self.expr
+    }
 }
 
 // position independent equality
@@ -234,14 +233,17 @@ impl PartialEq for EvaluatedExpression {
 
 impl EvaluatedExpression {
     pub fn with_position(start: usize, end: usize, path: Rc<PathBuf>, expr: EvaluatedExpr) -> EvaluatedExpression {
-        EvaluatedExpression(Rc::new(EvaluatedExpressionInner{ start, end, path, expr }))
+        EvaluatedExpression {
+            locations: SmallVec::one(At::position(path,start,end)),
+            expr: Rc::new(expr)
+        }
     }
     pub fn new(expr: EvaluatedExpr) -> EvaluatedExpression {
         EvaluatedExpression::with_position(0,0,Rc::new(PathBuf::new()), expr)
     }
     pub fn into_expr(self) -> Option<EvaluatedExpr> {
-        match Rc::try_unwrap(self.0) {
-            Ok(e) => Some(e.expr),
+        match Rc::try_unwrap(self.expr) {
+            Ok(expr) => Some(expr),
             Err(_) => None
         }
     }
@@ -324,5 +326,36 @@ impl Location {
     }
     pub fn end(&self) -> usize {
         self.end_loc
+    }
+}
+
+// Where did a thing happen at? Location + path
+#[derive(Clone,PartialEq,Debug)]
+pub struct At {
+    location: Location,
+    file: Rc<PathBuf>
+}
+
+impl At {
+    pub fn position<File: Borrow<Rc<PathBuf>>>(file: File, start: usize, end: usize) -> At {
+        At {
+            location: Location::at(start,end),
+            file: file.borrow().clone(),
+        }
+    }
+    pub fn location<File: Borrow<Rc<PathBuf>>>(file: File, loc: Location) -> At {
+        At {
+            location: loc,
+            file: file.borrow().clone()
+        }
+    }
+    pub fn start(&self) -> usize {
+        self.location.start()
+    }
+    pub fn end(&self) -> usize {
+        self.location.end()
+    }
+    pub fn file(&self) -> &Path {
+        &*self.file
     }
 }

@@ -12,7 +12,7 @@ pub fn merge(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
     let mut seen_first = false;
 
     for (idx,e) in args.iter().enumerate() {
-        match e.expr {
+        match *e.expr() {
             EvaluatedExpr::Undefined => {
                 if !seen_first {
                     return Err(ApplicationError::WrongKindOfArguments{
@@ -24,7 +24,7 @@ pub fn merge(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
             },
             EvaluatedExpr::Block(ref block) => {
                 for (key,val) in &block.scope {
-                    if val.expr == EvaluatedExpr::Undefined { continue }
+                    if val.expr() == &EvaluatedExpr::Undefined { continue }
                     scope.insert(key.clone(), val.clone());
                 }
                 for item in &block.css {
@@ -39,7 +39,7 @@ pub fn merge(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
                 return Err(ApplicationError::WrongKindOfArguments{
                     index: idx,
                     expected: vec![Kind::Block],
-                    got: e.expr.kind()
+                    got: e.expr().kind()
                 }.into());
             }
         }

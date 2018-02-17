@@ -12,14 +12,14 @@ pub fn rgba<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
     }
 
     let get_number = |idx, e: &'a EvaluatedExpression| {
-        match e.expr {
+        match *e.expr() {
             EvaluatedExpr::Unit(val, ref unit) => {
                 Ok( (val, &**unit) )
             }
             _ => ApplicationError::WrongKindOfArguments{
                 index: idx,
                 expected: vec![Kind::Unit],
-                got: e.expr.kind()
+                got: e.expr().kind()
             }.into()
         }
     };
@@ -68,11 +68,11 @@ pub fn hsla<'a>(args: &'a Vec<EvaluatedExpression>, _context: &Context) -> PrimR
     }
 
     let get_number = |idx, e: &'a EvaluatedExpression| {
-        match e.expr {
+        match *e.expr() {
             EvaluatedExpr::Unit(val, ref unit) => {
                 Ok( (val, &**unit) )
             }
-            _ => ApplicationError::WrongKindOfArguments{ index: idx, expected: vec![Kind::Unit], got: e.expr.kind() }.into()
+            _ => ApplicationError::WrongKindOfArguments{ index: idx, expected: vec![Kind::Unit], got: e.expr().kind() }.into()
         }
     };
 

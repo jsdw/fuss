@@ -20,10 +20,10 @@ pub fn import(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
 
     // expect a string input:
     let a = &args[0];
-    let relpath = if let EvaluatedExpr::Str(ref relpath) = a.expr {
+    let relpath = if let EvaluatedExpr::Str(ref relpath) = *a.expr() {
         Ok(relpath)
     } else {
-        Err(ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str], got: a.expr.kind() })
+        Err(ApplicationError::WrongKindOfArguments{ index: 0, expected: vec![Kind::Str], got: a.expr().kind() })
     }?;
 
     // is the path absolute? if so, search from wherever the root fuss file lives.
