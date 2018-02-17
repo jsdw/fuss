@@ -8,19 +8,19 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
     match e.expr {
 
         // String eg "hello"
-        Expr::Str(ref s) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Str(s.clone()))),
+        Expr::Str(ref s) => Ok(EvaluatedExpression::with_position(e.start, e.end, &context.path, EvaluatedExpr::Str(s.clone()))),
 
         // boolean eg true or false
-        Expr::Bool(b) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Bool(b))),
+        Expr::Bool(b) => Ok(EvaluatedExpression::with_position(e.start, e.end, &context.path, EvaluatedExpr::Bool(b))),
 
         // unit eg 12px, 100%, 30
-        Expr::Unit(n, ref unit) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Unit(n,unit.clone()))),
+        Expr::Unit(n, ref unit) => Ok(EvaluatedExpression::with_position(e.start, e.end, &context.path, EvaluatedExpr::Unit(n,unit.clone()))),
 
         // colour
-        Expr::Colour(ref col) => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Colour(col.clone()))),
+        Expr::Colour(ref col) => Ok(EvaluatedExpression::with_position(e.start, e.end, &context.path, EvaluatedExpr::Colour(col.clone()))),
 
         // undefined
-        Expr::Undefined => Ok(EvaluatedExpression::with_position(e.start, e.end, context.path.clone(), EvaluatedExpr::Undefined)),
+        Expr::Undefined => Ok(EvaluatedExpression::with_position(e.start, e.end, &context.path, EvaluatedExpr::Undefined)),
 
         // Variables: replace these with the Expresssion on scope that the
         // variable points to. Assume anything on scope is already simplified
@@ -30,7 +30,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
             scope.find(name, ty).map_or(
                 Err(err(ApplicationError::CantFindVariable(name.clone(), ty), At::position(&context.path, e.start, e.end))),
-                |var| { Ok(var.clone()) }
+                |var| { Ok(var.and_position(e.start, e.end, &context.path)) }
             )
 
         },
@@ -61,7 +61,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             Ok(EvaluatedExpression::with_position(
                 e.start,
                 e.end,
-                context.path.clone(),
+                &context.path,
                 EvaluatedExpr::Func{
                     inputs: inputs.clone(),
                     output: output.clone(),
@@ -86,10 +86,10 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                         if let EvaluatedExpr::Block(ref block) = *curr.clone().expr() {
                             match block.scope.get(name) {
                                 Some(val) => {
-                                    curr = val.clone();
+                                    curr = val.and_position(location.start(), location.end(), &context.path);
                                 },
                                 None => {
-                                    curr = EvaluatedExpression::with_position(location.start(), location.end(), context.path.clone(), EvaluatedExpr::Undefined);
+                                    curr = EvaluatedExpression::with_position(location.start(), location.end(), &context.path, EvaluatedExpr::Undefined);
                                 }
                             }
                         } else {
@@ -111,7 +111,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
 
                                 // if too few args provided, set rest to undefined:
                                 while arg_names.len() > simplified_args.len() {
-                                    simplified_args.push( EvaluatedExpression::with_position(location.start(), location.end(), context.path.clone(), EvaluatedExpr::Undefined) );
+                                    simplified_args.push( EvaluatedExpression::with_position(location.start(), location.end(), &context.path, EvaluatedExpr::Undefined) );
                                 }
 
                                 // complain if too many args are provided:
@@ -133,15 +133,15 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                                 // with the location the function was called from (here).
                                 curr = eval(func_e, func_scope.push(function_scope), func_context).map_err(|e| {
                                     err(ContextError::At(e), At::location(&context.path, location.clone()))
-                                })?;
+                                })?.and_position(location.start(), location.end(), &context.path);
 
                             },
                             EvaluatedExpr::PrimFunc(ref func) => {
 
                                 // primitive func? just run it on the args then!
                                 curr = match func.0(&simplified_args, context) {
-                                    Ok(res) => Ok(EvaluatedExpression::with_position(e.start,e.end,context.path.clone(),res)),
-                                    Err(error) => Err(err(error, At::position(&context.path, e.start, e.end)))
+                                    Ok(res) => Ok(EvaluatedExpression::with_position(location.start(), location.end(), &context.path, res)),
+                                    Err(error) => Err(err(error, At::location(&context.path, location.clone())))
                                 }?;
 
                             }
@@ -186,7 +186,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
             Ok(EvaluatedExpression::with_position(
                 e.start,
                 e.end,
-                context.path.clone(),
+                &context.path,
                 EvaluatedExpr::Block(EvaluatedBlock{
                     ty: ty,
                     at: At::position(&context.path, e.start, e.end),
@@ -376,7 +376,7 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 out.push(EvaluatedCSSEntry::KeyVal{
                     key: key,
                     val: val,
-                    at: At::location(context.path.clone(), location)
+                    at: At::location(&context.path, location)
                 });
             }
         }

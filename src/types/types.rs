@@ -232,10 +232,16 @@ impl PartialEq for EvaluatedExpression {
 }
 
 impl EvaluatedExpression {
-    pub fn with_position(start: usize, end: usize, path: Rc<PathBuf>, expr: EvaluatedExpr) -> EvaluatedExpression {
+    pub fn with_position<FilePath: Borrow<Rc<PathBuf>>>(start: usize, end: usize, path: FilePath, expr: EvaluatedExpr) -> EvaluatedExpression {
         EvaluatedExpression {
-            locations: SmallVec::one(At::position(path,start,end)),
+            locations: SmallVec::one(At::position(path.borrow().clone(),start,end)),
             expr: Rc::new(expr)
+        }
+    }
+    pub fn and_position<FilePath: Borrow<Rc<PathBuf>>>(&self, start: usize, end: usize, path: FilePath) -> EvaluatedExpression {
+        EvaluatedExpression {
+            locations: self.locations.with_item(At::position(path.borrow().clone(),start,end)),
+            expr: self.expr.clone()
         }
     }
     pub fn new(expr: EvaluatedExpr) -> EvaluatedExpression {
@@ -337,13 +343,13 @@ pub struct At {
 }
 
 impl At {
-    pub fn position<File: Borrow<Rc<PathBuf>>>(file: File, start: usize, end: usize) -> At {
+    pub fn position<FilePath: Borrow<Rc<PathBuf>>>(file: FilePath, start: usize, end: usize) -> At {
         At {
             location: Location::at(start,end),
             file: file.borrow().clone(),
         }
     }
-    pub fn location<File: Borrow<Rc<PathBuf>>>(file: File, loc: Location) -> At {
+    pub fn location<FilePath: Borrow<Rc<PathBuf>>>(file: FilePath, loc: Location) -> At {
         At {
             location: loc,
             file: file.borrow().clone()
