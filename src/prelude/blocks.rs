@@ -49,7 +49,7 @@ pub fn merge(args: &Vec<EvaluatedExpression>, context: &Context) -> PrimRes {
     Ok(EvaluatedExpr::Block(EvaluatedBlock{
         ty: ty,
         //@todo improve this:
-        at: At::position(&context.path, 0, 0),
+        at: SmallVec::one(At::position(&context.path, 0, 0)),
         scope: scope,
         selector: selector,
         css: css

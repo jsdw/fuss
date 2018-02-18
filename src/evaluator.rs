@@ -189,7 +189,7 @@ pub fn eval(e: &Expression, scope: Scope, context: &Context) -> Result<Evaluated
                 &context.path,
                 EvaluatedExpr::Block(EvaluatedBlock{
                     ty: ty,
-                    at: At::position(&context.path, e.start, e.end),
+                    at: SmallVec::one(At::position(&context.path, e.start, e.end)),
                     scope: block_scope,
                     selector: selector,
                     css: css
@@ -367,11 +367,16 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match *css_expr.expr() {
                     EvaluatedExpr::Block(ref block) => {
+
+                        // For any blocks nested in our block, update the block's
+                        // location to match that of the underlying expression, which
+                        // has done the work of capturing variable locations etc.
                         let new_block = EvaluatedBlock {
-                            at: css_expr.locations().last().clone(),
+                            at: css_expr.locations().clone(),
                             ..block.clone()
                         };
                         out.push(EvaluatedCSSEntry::Block(new_block));
+
                     }
                     ref e => return Err(err(ShapeError::NotACSSBlock(e.kind()), css_expr.locations()))
                 };

@@ -311,7 +311,7 @@ pub enum ShapeError {
     KeyframesNestedBlockNotAllowed,
     FontfaceBlockNotAllowed,
     InvalidExpressionInCssValue(Box<EvaluatedExpr>),
-    NakedKeyValNotAllowed(String,String),
+    NakedKeyValNotAllowed,
     NotACSSBlock(Kind)
 }
 impl ErrorText for ShapeError {
@@ -331,7 +331,7 @@ impl ErrorText for ShapeError {
             InvalidExpressionInCssValue{..} => {
                 "Invalid value being inserted into this CSS".to_owned()
             },
-            NakedKeyValNotAllowed{..} => {
+            NakedKeyValNotAllowed => {
                 "key:value pairs cannot be at the top level".to_owned()
             },
             NotACSSBlock{..} => {
@@ -363,8 +363,8 @@ impl ErrorText for ShapeError {
             InvalidExpressionInCssValue(ref expr) => {
                 format!("I can't interpolate an expression that's {} into a CSS value. I can interpolate strings, booleans, units and colors into CSS values", expr.kind())
             },
-            NakedKeyValNotAllowed(ref key, ref val) => {
-                format!("The pair '{}: {};' needs to be inside a block with a selector", key, val)
+            NakedKeyValNotAllowed => {
+                format!("Key:value pairs need to be inside a block with a selector")
             },
             NotACSSBlock(kind) => {
                 format!("I expected a CSS block but got something that's {}", kind)

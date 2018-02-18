@@ -46,7 +46,7 @@ pub enum CSSBit {
 #[derive(PartialEq,Debug,Clone)]
 pub struct EvaluatedBlock {
     pub ty: BlockType,
-    pub at: At,
+    pub at: SmallVec<At>,
     pub scope: HashMap<String,EvaluatedExpression>,
     pub selector: String,
     pub css: Vec<EvaluatedCSSEntry>

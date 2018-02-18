@@ -49,7 +49,7 @@ pub fn display_warning<'a, E: Borrow<Error>, O: Borrow<Options<'a>>>(e: E, opts:
 }
 
 pub fn display_error<'a, E: Borrow<Error>, O: Borrow<Options<'a>>>(e: E, opts: O) {
-    eprintln!("{}", error_string(e.borrow(), opts.borrow()));
+    eprintln!("Error: {}", error_string(e.borrow(), opts.borrow()));
 }
 
 // context provides the current path of the file that the error happened in.

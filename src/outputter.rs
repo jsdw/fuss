@@ -77,8 +77,8 @@ pub fn print_css(block: EvaluatedBlock) -> Vec<Error> {
             if style.selector.len() > 0 {
                 css_block_into_string(indent, merge_css_selector(style.selector), style.keyvals, &mut s);
             } else if style.keyvals.len() > 0 {
-                for (key,val,at) in style.keyvals {
-                    warnings.push(err(ShapeError::NakedKeyValNotAllowed(key, val), at))
+                for KeyVals{at,..} in style.keyvals {
+                    warnings.push(err(ShapeError::NakedKeyValNotAllowed, at))
                 }
             }
         }
@@ -119,7 +119,7 @@ fn fontface_into_string(indent_count: usize, block: FontFace, s: &mut String) {
     *s += "}\n";
 }
 
-fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String,String,At)>, s: &mut String) {
+fn css_block_into_string(indent_count: usize, selector: String, css: Vec<KeyVals>, s: &mut String) {
     let indent: String = (0..indent_count).map(|_| '\t').collect();
 
     *s += &indent;
@@ -130,15 +130,17 @@ fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String
     *s += "}\n";
 }
 
-fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String,At)>, s: &mut String) {
+fn css_keyvals_into_string(indent_count: usize, css: Vec<KeyVals>, s: &mut String) {
     let indent: String = (0..indent_count).map(|_| '\t').collect();
 
-    for (key,val,_) in css {
-        *s += &indent;
-        *s += key.trim();
-        *s += ": ";
-        *s += val.trim();
-        *s += ";\n";
+    for KeyVals{keyvals,..} in css {
+        for KeyVal{key,val} in keyvals {
+            *s += &indent;
+            *s += key.trim();
+            *s += ": ";
+            *s += val.trim();
+            *s += ";\n";
+        }
     }
 }
 
@@ -187,7 +189,8 @@ fn merge_css_selector(mut selector: Vec<String>) -> String {
 #[derive(Clone,PartialEq,Debug)]
 struct Loc {
     media: Vec<String>,
-    selector: Vec<String>
+    selector: Vec<String>,
+    at: SmallVec<At>
 }
 
 #[derive(Clone,PartialEq,Debug)]
@@ -204,7 +207,7 @@ impl Media {
 #[derive(Clone,PartialEq,Debug)]
 struct Style {
     selector: Vec<String>,
-    keyvals: Vec<(String,String,At)>
+    keyvals: Vec<KeyVals>
 }
 impl Style {
     fn with_selector(s: Vec<String>) -> Self { Style{selector: s, keyvals: vec![]} }
@@ -219,12 +222,12 @@ struct Keyframes {
 #[derive(Clone,PartialEq,Debug)]
 struct KeyframesInner {
     selector: String,
-    keyvals: Vec<(String,String,At)>
+    keyvals: Vec<KeyVals>
 }
 
 #[derive(Clone,PartialEq,Debug)]
 struct FontFace {
-    keyvals: Vec<(String,String,At)>
+    keyvals: Vec<KeyVals>
 }
 
 #[derive(Clone,PartialEq,Debug)]
@@ -232,6 +235,18 @@ struct Items {
     media: Vec<Media>,
     fontfaces: Vec<Result<FontFace,Error>>,
     keyframes: Vec<Result<Keyframes,Error>>,
+}
+
+#[derive(Clone,PartialEq,Debug)]
+struct KeyVals {
+    at: SmallVec<At>,
+    keyvals: Vec<KeyVal>
+}
+
+#[derive(Clone,PartialEq,Debug)]
+struct KeyVal {
+    key: String,
+    val: String
 }
 
 impl Items {
@@ -246,8 +261,9 @@ impl Items {
 
     fn populate_from_block(&mut self, block: EvaluatedBlock) {
 
+        let at = block.at.clone();
         let entries = vec![ EvaluatedCSSEntry::Block(block) ];
-        let loc = Loc{ media: vec![], selector: vec![] };
+        let loc = Loc{ media: vec![], selector: vec![], at: at };
 
         self.populate_from_entries(entries, loc);
 
@@ -291,8 +307,12 @@ impl Items {
 
                     media.fontfaces.append(&mut fontfaces);
                     media.keyframes.append(&mut keyframes);
-                    style.keyvals.append(&mut keyvals);
-                    if style.keyvals.len() > 0 { media.styles.push(style); }
+
+                    if !keyvals.is_empty() {
+                        style.keyvals.push(KeyVals { at: loc.at.clone(), keyvals });
+                        keyvals = vec![];
+                        media.styles.push(style);
+                    }
                     self.media.push(media);
                 }
             }
@@ -301,8 +321,8 @@ impl Items {
         for entry in entries {
 
             match entry {
-                EvaluatedCSSEntry::KeyVal{key,val,at} => {
-                    keyvals.push( (key,val,at) );
+                EvaluatedCSSEntry::KeyVal{key,val,..} => {
+                    keyvals.push(KeyVal{key,val});
                 },
 
                 EvaluatedCSSEntry::Block(block) => {
@@ -332,6 +352,7 @@ impl Items {
 
                             append_current!();
                             let next_loc = Loc {
+                                at: at,
                                 media: { let mut m = loc.media.clone(); m.push(block.selector); m },
                                 selector: loc.selector.clone()
                             };
@@ -342,6 +363,7 @@ impl Items {
 
                             append_current!();
                             let next_loc = Loc {
+                                at: at,
                                 media: loc.media.clone(),
                                 selector: {
                                     let mut s = loc.selector.clone();
@@ -388,8 +410,9 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
                         let mut keyvals = vec![];
                         for entry in block.css {
                             match entry {
-                                EvaluatedCSSEntry::KeyVal{key,val,at} => {
-                                    keyvals.push( (key,val,at) );
+                                EvaluatedCSSEntry::KeyVal{key,val,..} => {
+                                    // use the block's location for keyvals
+                                    keyvals.push( KeyVal{key,val} );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
                                     return ShapeError::KeyframesNestedBlockNotAllowed.into();
@@ -398,7 +421,7 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
                         }
                         inner.push(KeyframesInner{
                             selector: block.selector,
-                            keyvals: keyvals
+                            keyvals: vec![KeyVals{ at: block.at, keyvals: keyvals }]
                         });
                     }
                 }
@@ -417,8 +440,8 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
     let mut keyvals = vec![];
     for item in block.css {
         match item {
-            EvaluatedCSSEntry::KeyVal{key,val,at} => {
-                keyvals.push( (key,val,at) );
+            EvaluatedCSSEntry::KeyVal{key,val,..} => {
+                keyvals.push(KeyVal{key,val});
             },
             EvaluatedCSSEntry::Block(_) => {
                 return ShapeError::FontfaceBlockNotAllowed.into();
@@ -427,7 +450,7 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
     }
 
     Ok(FontFace{
-        keyvals: keyvals
+        keyvals: vec![KeyVals{ at: block.at, keyvals: keyvals }]
     })
 
 }
