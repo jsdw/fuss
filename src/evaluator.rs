@@ -366,7 +366,13 @@ fn try_eval_cssentries(entries: &Vec<CSSEntry>, scope: &Scope, context: &Context
             CSSEntry::Expr(ref expr) => {
                 let css_expr = eval(expr, scope.clone(),context)?;
                 match *css_expr.expr() {
-                    EvaluatedExpr::Block(ref block) => out.push(EvaluatedCSSEntry::Block(block.clone())),
+                    EvaluatedExpr::Block(ref block) => {
+                        let new_block = EvaluatedBlock {
+                            at: css_expr.locations().last().clone(),
+                            ..block.clone()
+                        };
+                        out.push(EvaluatedCSSEntry::Block(new_block));
+                    }
                     ref e => return Err(err(ShapeError::NotACSSBlock(e.kind()), css_expr.locations()))
                 };
             },

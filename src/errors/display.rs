@@ -17,35 +17,39 @@ impl <'a> Options<'a> {
     }
 }
 
-pub fn display_import_error<'a>(e: ImportError, opts: Options<'a>) {
+pub fn display_import_error<'a, E: Borrow<ImportError>, O: Borrow<Options<'a>>>(e: E, opts: O) {
     use self::ImportError::*;
-    match e {
+    match *e.borrow() {
         CannotImportNoPathSet | ImportLoop{..} => {
             unreachable!()
         },
-        CannotOpenFile(path) => {
+        CannotOpenFile(ref path) => {
             eprintln!("I can't open the file:\n\n{}\n\nDoes it exist?", path.display())
         },
-        CannotReadFile(path) => {
+        CannotReadFile(ref path) => {
             eprintln!("I can't read the file:\n\n{}\n\nPerhaps you do not have permission?", path.display())
         },
-        CompileError(err, path) => {
-            if path == PathBuf::new() {
+        CompileError(ref err, ref path) => {
+            if *path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , error_string(&err, &opts)
+                    , error_string(err.borrow(), opts.borrow())
                 )
             } else {
                 eprintln!("I ran into an error compiling the file {}:\n\n{}"
                     , path.display()
-                    , error_string(&err, &opts)
+                    , error_string(err.borrow(), opts.borrow())
                 )
             }
         }
     }
 }
 
-pub fn display_error<'a>(err: Error, opts: Options<'a>) {
-    eprintln!("{}", error_string(&err, &opts));
+pub fn display_warning<'a, E: Borrow<Error>, O: Borrow<Options<'a>>>(e: E, opts: O) {
+    eprintln!("Warning: {}", error_string(e.borrow(), opts.borrow()));
+}
+
+pub fn display_error<'a, E: Borrow<Error>, O: Borrow<Options<'a>>>(e: E, opts: O) {
+    eprintln!("{}", error_string(e.borrow(), opts.borrow()));
 }
 
 // context provides the current path of the file that the error happened in.

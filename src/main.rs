@@ -67,8 +67,9 @@ fn run() {
             },
             Ok(EvaluatedExpr::Block(block)) => {
                 let warnings = outputter::print_css(block);
+                let opts = display::Options::with_stdin(&input_string);
                 for warning in warnings {
-                    display::display_error(warning, display::Options::with_stdin(&input_string));
+                    display::display_warning(warning, &opts);
                 }
             },
             Ok(e) => {
