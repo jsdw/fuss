@@ -17,7 +17,7 @@ impl <'a> Options<'a> {
     }
 }
 
-pub fn display_error<'a>(e: ImportError, opts: Options<'a>) {
+pub fn display_import_error<'a>(e: ImportError, opts: Options<'a>) {
     use self::ImportError::*;
     match e {
         CannotImportNoPathSet | ImportLoop{..} => {
@@ -32,30 +32,34 @@ pub fn display_error<'a>(e: ImportError, opts: Options<'a>) {
         CompileError(err, path) => {
             if path == PathBuf::new() {
                 eprintln!("I ran into an error compiling from stdin:\n\n{}"
-                    , display_compile_error(&err, &opts)
+                    , error_string(&err, &opts)
                 )
             } else {
                 eprintln!("I ran into an error compiling the file {}:\n\n{}"
                     , path.display()
-                    , display_compile_error(&err, &opts)
+                    , error_string(&err, &opts)
                 )
             }
         }
     }
 }
 
+pub fn display_error<'a>(err: Error, opts: Options<'a>) {
+    eprintln!("{}", error_string(&err, &opts));
+}
+
 // context provides the current path of the file that the error happened in.
 // Each time we hit an import error, we recurse into it using the new path.
-fn display_compile_error<'a>(err: &Error, opts: &Options<'a>) -> String {
+fn error_string<'a>(err: &Error, opts: &Options<'a>) -> String {
 
     let mut out = match err.cause() {
         ErrorKind::ImportError(ImportError::CompileError(ref err, ..)) => {
-            let mut o = display_compile_error(err, opts);
+            let mut o = error_string(err, opts);
             o.push_str("\n");
             o
         },
         ErrorKind::ContextError(ContextError::At(ref err)) => {
-            let mut o = display_compile_error(err, opts);
+            let mut o = error_string(err, opts);
             o.push_str("\n");
             o
         },

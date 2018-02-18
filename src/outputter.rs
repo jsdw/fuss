@@ -3,12 +3,13 @@ use errors::*;
 use std::io::{self, Write};
 
 /// the only thing we expose from this:
-pub fn print_css(block: EvaluatedBlock) {
+pub fn print_css(block: EvaluatedBlock) -> Vec<Error> {
 
     let mut items = Items::new();
     items.populate_from_block(block);
 
     let mut s = String::new();
+    let mut warnings = vec![];
 
     // print global fontfaces:
     for font in items.fontfaces {
@@ -17,7 +18,7 @@ pub fn print_css(block: EvaluatedBlock) {
                 fontface_into_string(0, block, &mut s);
             },
             Err(e) => {
-                eprintln!("Warning (font-face): {:?}", e);
+                warnings.push(e);
             }
         };
     }
@@ -29,7 +30,7 @@ pub fn print_css(block: EvaluatedBlock) {
                 keyframes_into_string(0, block, &mut s);
             },
             Err(e) => {
-                eprintln!("Warning (keyframes): {:?}", e);
+                warnings.push(e);
             }
         }
     }
@@ -53,7 +54,7 @@ pub fn print_css(block: EvaluatedBlock) {
                         fontface_into_string(indent, block, &mut s);
                     },
                     Err(e) => {
-                        eprintln!("Warning: {:?}", e);
+                        warnings.push(e);
                     }
                 };
             }
@@ -66,7 +67,7 @@ pub fn print_css(block: EvaluatedBlock) {
                         keyframes_into_string(indent, block, &mut s);
                     },
                     Err(e) => {
-                        eprintln!("Warning (keyframes): {:?}", e);
+                        warnings.push(e);
                     }
                 }
             }
@@ -76,7 +77,9 @@ pub fn print_css(block: EvaluatedBlock) {
             if style.selector.len() > 0 {
                 css_block_into_string(indent, merge_css_selector(style.selector), style.keyvals, &mut s);
             } else if style.keyvals.len() > 0 {
-                eprintln!("Warning: can't have naked keyvals")
+                for (key,val,at) in style.keyvals {
+                    warnings.push(err(ShapeError::NakedKeyValNotAllowed(key, val), at))
+                }
             }
         }
 
@@ -89,7 +92,7 @@ pub fn print_css(block: EvaluatedBlock) {
     let stdout = io::stdout();
     let mut handle = stdout.lock();
     handle.write_all(s.as_bytes()).expect("failed to write to stdout");
-
+    warnings
 }
 
 fn keyframes_into_string(indent_count: usize, block: Keyframes, s: &mut String) {
@@ -116,7 +119,7 @@ fn fontface_into_string(indent_count: usize, block: FontFace, s: &mut String) {
     *s += "}\n";
 }
 
-fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String,String)>, s: &mut String) {
+fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String,String,At)>, s: &mut String) {
     let indent: String = (0..indent_count).map(|_| '\t').collect();
 
     *s += &indent;
@@ -127,10 +130,10 @@ fn css_block_into_string(indent_count: usize, selector: String, css: Vec<(String
     *s += "}\n";
 }
 
-fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String)>, s: &mut String) {
+fn css_keyvals_into_string(indent_count: usize, css: Vec<(String,String,At)>, s: &mut String) {
     let indent: String = (0..indent_count).map(|_| '\t').collect();
 
-    for (key,val) in css {
+    for (key,val,_) in css {
         *s += &indent;
         *s += key.trim();
         *s += ": ";
@@ -201,7 +204,7 @@ impl Media {
 #[derive(Clone,PartialEq,Debug)]
 struct Style {
     selector: Vec<String>,
-    keyvals: Vec<(String,String)>
+    keyvals: Vec<(String,String,At)>
 }
 impl Style {
     fn with_selector(s: Vec<String>) -> Self { Style{selector: s, keyvals: vec![]} }
@@ -216,12 +219,12 @@ struct Keyframes {
 #[derive(Clone,PartialEq,Debug)]
 struct KeyframesInner {
     selector: String,
-    keyvals: Vec<(String,String)>
+    keyvals: Vec<(String,String,At)>
 }
 
 #[derive(Clone,PartialEq,Debug)]
 struct FontFace {
-    keyvals: Vec<(String,String)>
+    keyvals: Vec<(String,String,At)>
 }
 
 #[derive(Clone,PartialEq,Debug)]
@@ -298,8 +301,8 @@ impl Items {
         for entry in entries {
 
             match entry {
-                EvaluatedCSSEntry::KeyVal{key,val,..} => {
-                    keyvals.push( (key,val) );
+                EvaluatedCSSEntry::KeyVal{key,val,at} => {
+                    keyvals.push( (key,val,at) );
                 },
 
                 EvaluatedCSSEntry::Block(block) => {
@@ -385,8 +388,8 @@ fn handle_keyframes(block: EvaluatedBlock) -> Result<Keyframes,ErrorKind> {
                         let mut keyvals = vec![];
                         for entry in block.css {
                             match entry {
-                                EvaluatedCSSEntry::KeyVal{key,val,..} => {
-                                    keyvals.push( (key,val) );
+                                EvaluatedCSSEntry::KeyVal{key,val,at} => {
+                                    keyvals.push( (key,val,at) );
                                 },
                                 EvaluatedCSSEntry::Block(..) => {
                                     return ShapeError::KeyframesNestedBlockNotAllowed.into();
@@ -414,8 +417,8 @@ fn handle_fontface(block: EvaluatedBlock) -> Result<FontFace,ErrorKind> {
     let mut keyvals = vec![];
     for item in block.css {
         match item {
-            EvaluatedCSSEntry::KeyVal{key,val,..} => {
-                keyvals.push( (key,val) );
+            EvaluatedCSSEntry::KeyVal{key,val,at} => {
+                keyvals.push( (key,val,at) );
             },
             EvaluatedCSSEntry::Block(_) => {
                 return ShapeError::FontfaceBlockNotAllowed.into();

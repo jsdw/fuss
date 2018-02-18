@@ -63,10 +63,13 @@ fn run() {
 
         match res {
             Err(e) => {
-                display::display_error(e, display::Options::with_stdin(&input_string));
+                display::display_import_error(e, display::Options::with_stdin(&input_string));
             },
             Ok(EvaluatedExpr::Block(block)) => {
-                outputter::print_css(block);
+                let warnings = outputter::print_css(block);
+                for warning in warnings {
+                    display::display_error(warning, display::Options::with_stdin(&input_string));
+                }
             },
             Ok(e) => {
                 eprintln!("Fuss file needs to evaluate to a css block, but instead evaluates to: {}", e.kind());
