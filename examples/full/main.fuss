@@ -1,9 +1,39 @@
-$a: {  padding: 2px; };
+$other: import("other");
 
-$a;
-
-$kf: @keyframes hello {
-    padding: 2px;
+$drop: &.drop {
+    border: 3px solid yellow;
+    .icon {
+        color: yellow;
+    }
 };
 
-$kf;
+.site-body {
+
+    // apply our other theme here,
+    // overriding the title colors:
+    $other.theme({
+        $title: red;
+        $titleBg: black;
+    });
+
+    // add drop styling too:
+    $drop;
+
+    &.massive .banner, &.huge .banner {
+        height: 100px;
+    }
+
+}
+
+.secondary-body {
+
+    // apply our other theme again here,
+    // but using the default values:
+    $other.theme();
+
+    // add drop styling too:
+    $drop;
+
+    margin: 2em;
+
+}

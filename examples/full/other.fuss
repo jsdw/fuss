@@ -1,11 +1,28 @@
-$another: {
-    opacity: 0;
+$theme: ($overrides) => {
+
+    // merge default theme values with provided overrides:
+    $settings: merge({
+        $title: gray;
+        $titleBg: #ff0000;
+        $text: #000;
+        $bodyBg: rgb(255,255,255);
+        $titleHeight: 50px;
+    }, $overrides);
+
+    // a helper for setting color/bgcolor:
+    $colors: ($fg, $bg) => {
+        color: $fg;
+        background-color: $bg;
+    };
+
+    .banner {
+        height: $settings.titleHeight;
+        $colors($settings.title, $settings.titleBg);
+    }
+
+    .main {
+        padding: 15px;
+        $colors($settings.text, $settings.bodyBg);
+    }
+
 };
-
-$var: undefined;
-
-// $var: undefined;
-$fn: ($a) => $a + 2;
-
-$a: 2px;
-$b: 3px;
