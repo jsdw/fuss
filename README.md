@@ -35,3 +35,20 @@ $drop: &.drop {
 
 }
 ```
+
+Check out the [examples](examples) folder for more.
+
+## Installation
+
+The easiest way to have a play with FUSS at the moment is to build from source. This is very straightforward:
+
+1. install rust from [the official website](https://www.rust-lang.org).
+2. run `cargo install` in this folder to build an optimised binary.
+
+## Note
+
+This is a prototype/work in progress. Many things work great, but there is still much to do before it can cover the vast majority of use cases!
+
+## Contributions
+
+Feedback and pull requests are welcome! Please open an issue prior to doing any serious amount of work so that we can have a chat and make sure we're on the same page :)
